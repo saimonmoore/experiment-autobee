@@ -34,34 +34,41 @@ export default class Autobee extends Autobase {
       "apply" in autobeeOptions ? autobeeOptions.apply : Autobee.apply;
     console.log("[Autobee()] Getting apply: ", { apply, autobeeOptions });
 
-    console.log("[Autobee#super()] ", { bootstrap, autobeeOptions, open, apply });
+    console.log("[Autobee#super()] ", {
+      bootstrap,
+      autobeeOptions,
+      open,
+      apply,
+    });
 
     super(store, bootstrap, {
       ...autobeeOptions,
       open,
       apply,
       close: (_view) => {},
-    //   ackInterval: 1000, // enable auto acking with the interval
+      //   ackInterval: 1000, // enable auto acking with the interval
     });
   }
 
   static async apply(batch, view, base) {
-    const b = view.batch({ update: false });
     console.log("[Autobee#apply] ");
 
     // Process operation nodes
     for (const node of batch) {
-      const op = node.value;
-      console.log("[Autobee#apply] Applying operation", { node, op });
+      const operation = JSON.parse(node.value);
+      console.log("[Autobee#apply] Applying operation", { node, operation });
 
-      if (op.type === "addWriter") {
-        await b.addWriter(b4a.from(op.key, "hex"));
-        // continue;
-      }
+    //   if (operation.type === "addWriter") {
+    //     console.log("[Autobee#apply] Adding new writer...", {
+    //       key: operation.key,
+    //     });
+    //     await base.addWriter(b4a.from(operation.key, "hex"));
+    //     console.log("[Autobee#apply] Added writer...", {
+    //       key: operation.key,
+    //     });
+    //     continue;
+    //   }
     }
-
-    console.log("[Autobee#apply] Flushing batch...");
-    await b.flush();
   }
 
   appendOperation(operation) {
@@ -69,7 +76,7 @@ export default class Autobee extends Autobase {
     return this.append(operation);
   }
 
-  addWriter(key) {
+  appendWriter(key) {
     return this.appendOperation(
       JSON.stringify({
         type: "addWriter",

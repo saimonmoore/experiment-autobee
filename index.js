@@ -7,9 +7,16 @@ import Autobee from "./db.js";
 
 import crypto from "crypto";
 
+import readline from 'readline'
+
 export function sha256(input) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
+
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+})
 
 class Mneme {
   static USERS_KEY = "org.mneme.users!";
@@ -67,6 +74,9 @@ class Mneme {
       this.bootstrapPrivateCorePublicKey,
       {
         apply: async (batch, view, base) => {
+          // Wait for the autobase to apply it's own batch
+          // await Autobee.apply(batch, view, base);
+
           //Do our own batched operations
           const batchedBeeOperations = view.batch({ update: false });
           console.log("[privateAutoBee#apply] Applying batch", {});
@@ -81,13 +91,22 @@ class Mneme {
             if (operation.type === "createUser") {
               await this.indexUsers(batchedBeeOperations, operation);
             }
+
+            if (operation.type === "addWriter") {
+              console.log("[privateAutoBee#apply] Adding new writer...", {
+                key: operation.key,
+              });
+              debugger;
+              const writerKey = b4a.from(operation.key, "hex");
+              await base.addWriter(writerKey);
+              console.log("[privateAutoBee#apply] Added writer...", {
+                key: operation.key,
+              });
+            }
           }
 
           // Flush the batched operations
           await batchedBeeOperations.flush();
-
-          // Wait for the autobase to apply it's own batch
-          await Autobee.apply(batch, view, base);
         },
       }
     )
@@ -101,12 +120,16 @@ class Mneme {
       // Skip append event for hyperbee's header block
       if (this.privateAutoBee.view.version === 1) return;
 
+      rl.pause()
+
       console.log("\r[privateAutoBee#onAppend] current db key/value pairs: ");
       for await (const node of this.privateAutoBee.createReadStream()) {
         console.log("key", node.key);
         console.log("value", node.value);
         console.log();
       }
+
+      rl.prompt()
     });
   }
 
@@ -164,6 +187,7 @@ class Mneme {
         this.currentUser = peer;
       }
 
+      rl.prompt()
       // We are replicating all my own cores from store!
       // e.g. We will replicate both the private and public cores to my other device.
       this.store.replicate(connection);
@@ -193,18 +217,6 @@ class Mneme {
           ),
         }
       );
-      // join my private core as the topic
-      this.peerDiscoverySession = this.swarm.join(
-        this.privateAutoBee.discoveryKey
-      );
-      console.log("joining swarm...", !!this.peerDiscoverySession);
-
-      await this.peerDiscoverySession.flushed();
-
-      console.log(
-        "private autobee server joined swarm with topic:",
-        b4a.toString(this.privateAutoBee.discoveryKey, "hex")
-      );
     } else {
       console.log(
         "I am the device owner peer (this is the private swarm) and I just joined the swarm to get updates from my other device.",
@@ -215,6 +227,21 @@ class Mneme {
         }
       );
     }
+
+    // join my private core as the topic
+    this.peerDiscoverySession = this.swarm.join(
+      this.privateAutoBee.discoveryKey
+    );
+    console.log("joining swarm...", !!this.peerDiscoverySession);
+
+    await this.peerDiscoverySession.flushed();
+
+    console.log(
+      "private autobee server joined swarm with topic:",
+      b4a.toString(this.privateAutoBee.discoveryKey, "hex")
+    );
+
+    rl.pause()
   }
 
   async indexUsers(batch, operation) {
@@ -238,7 +265,7 @@ class Mneme {
   }
 
   async addPrivateWriter(remotePrivateCorePublicKey) {
-    await this.privateAutoBee.addWriter(remotePrivateCorePublicKey);
+    await this.privateAutoBee.appendWriter(remotePrivateCorePublicKey);
   }
 
   info() {
@@ -287,6 +314,32 @@ console.log("Starting Mneme with args", { args });
 
 const mneme = new Mneme(bootstrapPrivateCorePublicKey, storage);
 mneme.info();
+
+await mneme.start();
+
+rl.on('line', async (line) => {
+  if (!line) {
+    rl.prompt()
+    return
+  }
+
+  if (line === 'exit') {
+    console.log('exiting')
+    process.exit(0)
+  } else if (line === 'friend1') {
+    await mneme.addFriend('foo@bar.com');
+    rl.prompt()
+    return
+  } else if (line === 'friend2') {
+    await mneme.addFriend('remote@bar.com');
+    rl.prompt()
+    return
+  }
+
+  await mneme.addPrivateWriter(line);
+  rl.prompt()
+})
+rl.prompt()
 
 export { mneme };
 
