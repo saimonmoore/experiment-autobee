@@ -1,0 +1,26 @@
+{
+  "name": "clarify",
+  "main": "index.js",
+  "type": "module",
+  "pear": {
+    "name": "clarify",
+    "type": "terminal"
+  },
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "brittle": "^3.0.0"
+  },
+  "scripts": {
+    "dev": "pear dev",
+    "test": "brittle test/*.test.js"
+  },
+  "dependencies": {
+    "autobase": "^6.0.0-rc10",
+    "b4a": "^1.6.6",
+    "corestore": "^6.18.1",
+    "crypto": "^1.0.1",
+    "graceful-goodbye": "^1.3.0",
+    "hyperbee": "^2.19.0",
+    "hyperswarm": "^4.7.14"
+  }
+}
