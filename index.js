@@ -15,10 +15,12 @@ export function sha256(input) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
-const rl = !isTestRunning && readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
+const rl =
+  !isTestRunning &&
+  readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
 
 export class Mneme {
   static USERS_KEY = "org.mneme.users!";
@@ -30,8 +32,13 @@ export class Mneme {
   store;
   bootstrapPrivateCorePublicKey;
   peerDiscoverySession;
+  swarm;
 
-  constructor(bootstrapPrivateCorePublicKey, storage, bootstrapSwarm) {
+  constructor(
+    bootstrapPrivateCorePublicKey,
+    storage,
+    bootstrapSwarm,
+  ) {
     this.bootstrapPrivateCorePublicKey = bootstrapPrivateCorePublicKey;
 
     // create a corestore instance with the given location
@@ -42,12 +49,6 @@ export class Mneme {
     // Else, get the core instance with the default name
     this.privateStore = this.store.namespace("private");
     // publicStore = store.namespace("public");
-
-    console.log("Creating Mneme with args", {
-      bootstrapPrivateCorePublicKey,
-      storage,
-      bootstrapSwarm,
-    });
 
     this.swarm = bootstrapSwarm
       ? new Hyperswarm({ bootstrap: bootstrapSwarm })
@@ -129,7 +130,11 @@ export class Mneme {
 
     // replication of corestore instance
     this.swarm.on("connection", (connection, peerInfo) => {
-      console.log("\r[swarm#connection] ...", { connection, peerInfo });
+      const peer = b4a.toString(peerInfo.publicKey, "hex");
+
+      console.log("\r[swarm#connection] Peer joined...", {
+        peer,
+      });
 
       connection.on("close", () => {
         console.log("\r[swarm#connection] Peer left...", {
@@ -143,17 +148,11 @@ export class Mneme {
         });
       });
 
-      const peer = b4a.toString(peerInfo.publicKey, "hex");
-
-      console.log("\r[swarm#connection] Peer joined...", {
-        peer,
-      });
-
       if (this.bootstrapPrivateCorePublicKey) {
         console.log(
           "\r[swarm#connection] I am the reader e.g. my other device peer",
           {
-            privateBee: bootstrapPrivateCorePublicKey,
+            privateBee: this.bootstrapPrivateCorePublicKey,
             discoveryKey: b4a.toString(this.privateAutoBee.discoveryKey, "hex"),
             peerKey: peer,
             topics: peerInfo.topics,
@@ -184,9 +183,9 @@ export class Mneme {
       console.log(
         "\r[swarm#connection] e.g. how many of my own devices are connected to my personal swarm...",
         {
-          connections: this.swarm.connections,
+          connections: this.swarm.connections.length,
           connecting: this.swarm.connecting,
-          peers: this.swarm.peers,
+          peers: this.swarm.peers.size,
         }
       );
     });
@@ -257,7 +256,7 @@ export class Mneme {
 
   async destroy() {
     this.swarm.destroy();
-    await this.privateAutoBee.close();
+    this.privateAutoBee && (await this.privateAutoBee.close());
   }
 
   info() {
