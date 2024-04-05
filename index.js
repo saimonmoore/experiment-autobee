@@ -74,44 +74,22 @@ class Mneme {
       this.bootstrapPrivateCorePublicKey,
       {
         apply: async (batch, view, base) => {
-          // Wait for the autobase to apply it's own batch
-          // await Autobee.apply(batch, view, base);
-
-          //Do our own batched operations
           const batchedBeeOperations = view.batch({ update: false });
-          console.log("[privateAutoBee#apply] Applying batch", {});
 
           for (const { value } of batch) {
             const operation = JSON.parse(value);
-            console.log("[privateAutoBee#apply] Applying value: ", {
-              value,
-              operation,
-            });
 
             if (operation.type === "createUser") {
               await this.indexUsers(batchedBeeOperations, operation);
             }
-
-            if (operation.type === "addWriter") {
-              console.log("[privateAutoBee#apply] Adding new writer...", {
-                key: operation.key,
-              });
-              debugger;
-              const writerKey = b4a.from(operation.key, "hex");
-              await base.addWriter(writerKey);
-              console.log("[privateAutoBee#apply] Added writer...", {
-                key: operation.key,
-              });
-            }
           }
 
-          // Flush the batched operations
           await batchedBeeOperations.flush();
+
+          await Autobee.apply(batch, view, base);
         },
       }
-    )
-      // Print any errors from apply() etc
-      .on("error", console.error);
+    ).on("error", console.error);
 
     // wait till all the properties of the hypercore are initialized
     await this.privateAutoBee.update();
@@ -193,16 +171,16 @@ class Mneme {
       this.store.replicate(connection);
     });
 
-    // this.swarm.on("update", () => {
-    //   console.log(
-    //     "\r[swarm#connection] e.g. how many of my own devices are connected to my personal swarm...",
-    //     {
-    //       connections: this.swarm.connections,
-    //       connecting: this.swarm.connecting,
-    //       peers: this.swarm.peers,
-    //     }
-    //   );
-    // });
+    this.swarm.on("update", () => {
+      console.log(
+        "\r[swarm#connection] e.g. how many of my own devices are connected to my personal swarm...",
+        {
+          connections: this.swarm.connections,
+          connecting: this.swarm.connecting,
+          peers: this.swarm.peers,
+        }
+      );
+    });
 
     if (!this.bootstrapPrivateCorePublicKey) {
       console.log(
