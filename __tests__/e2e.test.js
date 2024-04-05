@@ -2,86 +2,33 @@ import RAM from "random-access-memory";
 import createTestnet from "hyperdht/testnet";
 import b4a from "b4a";
 import { Mneme, sha256 } from "../index";
-
-// const waitUntil = (condition) =>
-//   new Promise((resolve) => {
-//     setTimeout(() => resolve(condition), 1000);
-//   });
-
-// const waitUntil = (condition, timeout = 3000, interval = 100) =>
-//   new Promise((resolve, reject) => {
-//     const check = () => {
-//       const result = condition(); // Evaluate the condition and store the result
-//       if (result) {
-//         resolve(result); // Resolve with the result of the condition
-//       } else {
-//         setTimeout(check, interval);
-//       }
-//     };
-
-//     setTimeout(() => reject("Timeout exceeded"), timeout);
-//     check();
-//   });
-
-// const waitUntil = async (condition, timeout = 3000, interval = 100) =>
-//   new Promise((resolve, reject) => {
-//     const check = async () => {
-//       try {
-//         const result = await condition(); // Await the potential promise
-//         resolve(result);
-//       } catch (error) {
-//         reject(error); // Forward errors from the condition promise
-//       }
-//     };
-
-//     setTimeout(() => reject("Timeout exceeded"), timeout);
-//     check();
-//   });
-
-const waitUntil = async (condition, timeout = 3000, interval = 100) =>
-  new Promise((resolve, reject) => {
-    let timeoutId; // Store the timeout ID
-
-    const check = async () => {
-      try {
-        const result = await condition();
-        clearTimeout(timeoutId); // Clear timeout on success
-        resolve(result);
-      } catch (error) {
-        clearTimeout(timeoutId); // Clear timeout on error
-        reject(error);
-      }
-    };
-
-    timeoutId = setTimeout(() => {
-      clearTimeout(timeoutId); // Redundant, but safe
-      reject("Timeout exceeded");
-    }, timeout);
-
-    check();
-  });
+import { waitUntil } from "./testHelpers";
 
 describe("E2E tests", () => {
-  let testnet;
-  let mneme;
+  let mnemeA;
+  let mnemeB;
+  let testnetA;
+  let testnetB;
 
   const friend1Email = "personalLocal@bar.com";
   const friend1Hash = sha256(friend1Email);
   const friend2Email = "personalRemote@bar.com";
   const friend2Hash = sha256(friend2Email);
 
-  beforeAll(async () => {
-    testnet = await createTestnet();
+  beforeEach((done) => {
+    testnetA = createTestnet(1, { teardown: done });
+    // testnetB = createTestnet(3, done);
   });
 
-  afterAll(async () => {
-    testnet.destroy();
+  afterEach(async () => {
+    mnemeA && (await mnemeA.destroy());
+    // mnemeB && await mnemeB.destroy();
   });
 
   describe("Owner device", () => {
-    const mnemeA = new Mneme(undefined, RAM.reusable(), testnet);
-
     beforeEach(async () => {
+      mnemeA = new Mneme(undefined, RAM.reusable(), testnetA.bootstrap);
+
       await mnemeA.start();
     });
 
@@ -94,6 +41,7 @@ describe("E2E tests", () => {
 
       const friend1Key = Mneme.USERS_KEY + friend1Hash;
 
+      // Now I expect to be able to retrieve the friend from the autobee
       await expect(
         waitUntil(async () => {
           const result = await mnemeA.privateAutoBee.get(friend1Key);
@@ -109,9 +57,23 @@ describe("E2E tests", () => {
       expect(dbKeyA).not.toBeUndefined();
 
       // Now I login on my other device
-      const mnemeB = new Mneme(dbKeyA, RAM.reusable(), testnet);
-      await mnemeB.start();
+      // mnemeB = new Mneme(dbKeyA, RAM.reusable(), testnetB.bootstrap);
+      // await mnemeB.start();
 
+      // // Other device autobee should not be writable at this stage
+      // await expect(
+      //   waitUntil(async () => mnemeB.privateAutoBee.writable)
+      // ).resolves.toBe(false);
+
+      // // I also expect to be able to retrieve the friend from the other devie's autobee
+      // await expect(
+      //   waitUntil(async () => {
+      //     const result = await mnemeB.privateAutoBee.get(friend1Key);
+      //     expect(result.key).toBe(friend1Key);
+
+      //     return result.value;
+      //   })
+      // ).resolves.toStrictEqual({ hash: friend1Hash, email: friend1Email });
     });
   });
 });

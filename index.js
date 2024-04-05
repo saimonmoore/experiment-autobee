@@ -9,11 +9,13 @@ import crypto from "crypto";
 
 import readline from "readline";
 
+const isTestRunning = process.env.NODE_ENV === "test";
+
 export function sha256(input) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
-const rl = readline.createInterface({
+const rl = !isTestRunning && readline.createInterface({
   input: process.stdin,
   output: process.stdout,
 });
@@ -41,6 +43,12 @@ export class Mneme {
     this.privateStore = this.store.namespace("private");
     // publicStore = store.namespace("public");
 
+    console.log("Creating Mneme with args", {
+      bootstrapPrivateCorePublicKey,
+      storage,
+      bootstrapSwarm,
+    });
+
     this.swarm = bootstrapSwarm
       ? new Hyperswarm({ bootstrap: bootstrapSwarm })
       : new Hyperswarm();
@@ -62,7 +70,6 @@ export class Mneme {
 
     goodbye(async () => {
       await this.privateAutoBee.close();
-      console.log("Goodbye!");
     });
   }
 
@@ -100,7 +107,7 @@ export class Mneme {
       // Skip append event for hyperbee's header block
       if (this.privateAutoBee.view.version === 1) return;
 
-      rl.pause();
+      !isTestRunning && rl.pause();
 
       console.log("\r[privateAutoBee#onAppend] current db key/value pairs: ");
       for await (const node of this.privateAutoBee.createReadStream()) {
@@ -109,15 +116,15 @@ export class Mneme {
         console.log();
       }
 
-      rl.prompt();
+      !isTestRunning && rl.prompt();
     });
   }
 
   async initSwarm() {
-    // Pear.teardown(() => this.swarm.destroy());
+    // Pear.teardown(() => this.destroy());
     process.once("SIGINT", () => {
       console.log("\r[swarm#SIGNIT] destroying swarm...");
-      this.swarm.destroy();
+      this.destroy();
     });
 
     // replication of corestore instance
@@ -167,7 +174,7 @@ export class Mneme {
         this.currentUser = peer;
       }
 
-      rl.prompt();
+      !isTestRunning && rl.prompt();
       // We are replicating all my own cores from store!
       // e.g. We will replicate both the private and public cores to my other device.
       this.store.replicate(connection);
@@ -221,7 +228,7 @@ export class Mneme {
       b4a.toString(this.privateAutoBee.discoveryKey, "hex")
     );
 
-    rl.pause();
+    !isTestRunning && rl.pause();
   }
 
   async indexUsers(batch, operation) {
@@ -246,6 +253,11 @@ export class Mneme {
 
   async addPrivateWriter(remotePrivateCorePublicKey) {
     await this.privateAutoBee.appendWriter(remotePrivateCorePublicKey);
+  }
+
+  async destroy() {
+    this.swarm.destroy();
+    await this.privateAutoBee.close();
   }
 
   info() {
@@ -286,7 +298,10 @@ export class Mneme {
   }
 }
 
-if (!process.env.NODE_ENV === "test") {
+if (!isTestRunning) {
+  console.log("======================");
+  console.log("Starting Mneme demo...");
+  console.log("======================");
   const args = process.argv.slice(2);
   const bootstrapPrivateCorePublicKey = args[0];
   const storage = args[1];
