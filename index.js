@@ -43,15 +43,6 @@ class Mneme {
 
     if (this.privateAutoBee.writable) {
       console.log("privateAutoBee is writable!");
-
-      if (this.peerDiscoverySession) {
-        await this.peerDiscoverySession.discovery.flushed();
-
-        console.log(
-          "private autobee server joined swarm with key:",
-          b4a.toString(this.privateAutoBee.key, "hex")
-        );
-      }
     }
 
     if (!this.privateAutoBee.writable) {
@@ -67,6 +58,10 @@ class Mneme {
   }
 
   async initPrivateBee() {
+    console.log("Initializing private autobee...", {
+      privateBootstrap: this.bootstrapPrivateCorePublicKey,
+    });
+
     this.privateAutoBee = new Autobee(
       { store: this.privateStore, coreName: "private" },
       this.bootstrapPrivateCorePublicKey,
@@ -124,6 +119,8 @@ class Mneme {
 
     // replication of corestore instance
     this.swarm.on("connection", (connection, peerInfo) => {
+      console.log("\r[swarm#connection] ...", { connection, peerInfo });
+
       connection.on("close", () => {
         console.log("\r[swarm#connection] Peer left...", {
           peer: b4a.toString(peerInfo.publicKey, "hex"),
@@ -172,16 +169,16 @@ class Mneme {
       this.store.replicate(connection);
     });
 
-    this.swarm.on("update", () => {
-      console.log(
-        "\r[swarm#connection] e.g. how many of my own devices are connected to my personal swarm...",
-        {
-          connections: this.swarm.connections,
-          connecting: this.swarm.connecting,
-          peers: this.swarm.peers,
-        }
-      );
-    });
+    // this.swarm.on("update", () => {
+    //   console.log(
+    //     "\r[swarm#connection] e.g. how many of my own devices are connected to my personal swarm...",
+    //     {
+    //       connections: this.swarm.connections,
+    //       connecting: this.swarm.connecting,
+    //       peers: this.swarm.peers,
+    //     }
+    //   );
+    // });
 
     if (!this.bootstrapPrivateCorePublicKey) {
       console.log(
@@ -201,6 +198,13 @@ class Mneme {
         this.privateAutoBee.discoveryKey
       );
       console.log("joining swarm...", !!this.peerDiscoverySession);
+
+      await this.peerDiscoverySession.flushed();
+
+      console.log(
+        "private autobee server joined swarm with topic:",
+        b4a.toString(this.privateAutoBee.discoveryKey, "hex")
+      );
     } else {
       console.log(
         "I am the device owner peer (this is the private swarm) and I just joined the swarm to get updates from my other device.",
@@ -249,15 +253,21 @@ class Mneme {
     console.log();
     console.log("You should see the friend added to the private core");
     console.log();
-    console.log("Take the public key of the private core (bootstrap key) and run the following command in terminal 2:");
+    console.log(
+      "Take the public key of the private core (bootstrap key) and run the following command in terminal 2:"
+    );
     console.log();
-    console.log("Bootstrap the private core: hrepl index.js {bootstrap key} ./storage2");
+    console.log(
+      "Bootstrap the private core: hrepl index.js {bootstrap key} ./storage2"
+    );
     console.log();
     console.log("In repl 2:");
     console.log();
     console.log("await mneme.start();");
     console.log();
-    console.log("Take the public key of the 'remote' core and run the following command:");
+    console.log(
+      "Take the public key of the 'remote' core and run the following command:"
+    );
     console.log("In repl 1:");
     console.log("await mneme.addPrivateWriter({remote db key});");
     console.log();

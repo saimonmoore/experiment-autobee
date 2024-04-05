@@ -21,7 +21,7 @@ export default class Autobee extends Autobase {
     };
 
     const open = (viewStore) => {
-      const core = viewStore.get(coreName, { valueEncoding: 'json' });
+      const core = viewStore.get(coreName);
       console.log("[Autobee#open] Getting core", { coreName, autobeeOptions });
 
       return new Hyperbee(core, {
@@ -34,12 +34,14 @@ export default class Autobee extends Autobase {
       "apply" in autobeeOptions ? autobeeOptions.apply : Autobee.apply;
     console.log("[Autobee()] Getting apply: ", { apply, autobeeOptions });
 
+    console.log("[Autobee#super()] ", { bootstrap, autobeeOptions, open, apply });
+
     super(store, bootstrap, {
       ...autobeeOptions,
       open,
       apply,
       close: (_view) => {},
-      ackInterval: 1000, // enable auto acking with the interval
+    //   ackInterval: 1000, // enable auto acking with the interval
     });
   }
 
