@@ -7,7 +7,7 @@ import Autobee from "./db.js";
 
 import crypto from "crypto";
 
-import readline from 'readline'
+import readline from "readline";
 
 export function sha256(input) {
   return crypto.createHash("sha256").update(input).digest("hex");
@@ -15,10 +15,10 @@ export function sha256(input) {
 
 const rl = readline.createInterface({
   input: process.stdin,
-  output: process.stdout
-})
+  output: process.stdout,
+});
 
-class Mneme {
+export class Mneme {
   static USERS_KEY = "org.mneme.users!";
 
   currentUser;
@@ -29,7 +29,7 @@ class Mneme {
   bootstrapPrivateCorePublicKey;
   peerDiscoverySession;
 
-  constructor(bootstrapPrivateCorePublicKey, storage) {
+  constructor(bootstrapPrivateCorePublicKey, storage, bootstrapSwarm) {
     this.bootstrapPrivateCorePublicKey = bootstrapPrivateCorePublicKey;
 
     // create a corestore instance with the given location
@@ -41,7 +41,9 @@ class Mneme {
     this.privateStore = this.store.namespace("private");
     // publicStore = store.namespace("public");
 
-    this.swarm = new Hyperswarm();
+    this.swarm = bootstrapSwarm
+      ? new Hyperswarm({ bootstrap: bootstrapSwarm })
+      : new Hyperswarm();
   }
 
   async start() {
@@ -98,7 +100,7 @@ class Mneme {
       // Skip append event for hyperbee's header block
       if (this.privateAutoBee.view.version === 1) return;
 
-      rl.pause()
+      rl.pause();
 
       console.log("\r[privateAutoBee#onAppend] current db key/value pairs: ");
       for await (const node of this.privateAutoBee.createReadStream()) {
@@ -107,7 +109,7 @@ class Mneme {
         console.log();
       }
 
-      rl.prompt()
+      rl.prompt();
     });
   }
 
@@ -165,7 +167,7 @@ class Mneme {
         this.currentUser = peer;
       }
 
-      rl.prompt()
+      rl.prompt();
       // We are replicating all my own cores from store!
       // e.g. We will replicate both the private and public cores to my other device.
       this.store.replicate(connection);
@@ -219,7 +221,7 @@ class Mneme {
       b4a.toString(this.privateAutoBee.discoveryKey, "hex")
     );
 
-    rl.pause()
+    rl.pause();
   }
 
   async indexUsers(batch, operation) {
@@ -284,42 +286,42 @@ class Mneme {
   }
 }
 
-const args = process.argv.slice(2);
-const bootstrapPrivateCorePublicKey = args[0];
-const storage = args[1];
+if (!process.env.NODE_ENV === "test") {
+  const args = process.argv.slice(2);
+  const bootstrapPrivateCorePublicKey = args[0];
+  const storage = args[1];
 
-console.log("Starting Mneme with args", { args });
+  console.log("Starting Mneme with args", { args });
 
-const mneme = new Mneme(bootstrapPrivateCorePublicKey, storage);
-mneme.info();
+  const mneme = new Mneme(bootstrapPrivateCorePublicKey, storage);
+  mneme.info();
 
-await mneme.start();
+  await mneme.start();
 
-rl.on('line', async (line) => {
-  if (!line) {
-    rl.prompt()
-    return
-  }
+  rl.on("line", async (line) => {
+    if (!line) {
+      rl.prompt();
+      return;
+    }
 
-  if (line === 'exit') {
-    console.log('exiting')
-    process.exit(0)
-  } else if (line === 'friend1') {
-    await mneme.addFriend('foo@bar.com');
-    rl.prompt()
-    return
-  } else if (line === 'friend2') {
-    await mneme.addFriend('remote@bar.com');
-    rl.prompt()
-    return
-  }
+    if (line === "exit") {
+      console.log("exiting");
+      process.exit(0);
+    } else if (line === "friend1") {
+      await mneme.addFriend("foo@bar.com");
+      rl.prompt();
+      return;
+    } else if (line === "friend2") {
+      await mneme.addFriend("remote@bar.com");
+      rl.prompt();
+      return;
+    }
 
-  await mneme.addPrivateWriter(line);
-  rl.prompt()
-})
-rl.prompt()
-
-export { mneme };
+    await mneme.addPrivateWriter(line);
+    rl.prompt();
+  });
+  rl.prompt();
+}
 
 // Example taken from https://docs.pears.com/how-tos/share-append-only-databases-with-hyperbee
 // Idea: slowly build up a simple version of the social app in a single file and then backport once we have a working version to the actual app.

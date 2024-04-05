@@ -8,11 +8,13 @@
   },
   "license": "Apache-2.0",
   "devDependencies": {
-    "brittle": "^3.0.0"
+    "brittle": "^3.0.0",
+    "nodemon": "^3.1.0"
   },
   "scripts": {
     "dev": "pear dev",
-    "test": "brittle test/*.test.js"
+    "test": "NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest --detect-open-handles __tests__/e2e.test.js",
+    "test:watch": "nodemon --watch . --exec 'npm run test'"
   },
   "dependencies": {
     "autobase": "^6.0.0-rc10",
@@ -21,6 +23,8 @@
     "crypto": "^1.0.1",
     "graceful-goodbye": "^1.3.0",
     "hyperbee": "^2.19.0",
-    "hyperswarm": "^4.7.14"
+    "hyperswarm": "^4.7.14",
+    "jest": "^29.7.0",
+    "random-access-memory": "^6.2.1"
   }
 }
