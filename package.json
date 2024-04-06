@@ -19,7 +19,7 @@
     "test:jest:watch": "nodemon --watch . --exec 'npm run test:jest:strict'",
     "test:brittle:watch": "nodemon --watch . --exec 'npm run test:brittle:all'",
     "test:brittle:all": "NODE_ENV=test brittle __tests__/all.brittle.js",
-    "test:brittle:generate": "brittle -r __tests__/all.brittle.js __tests__/*.brittle.test.js"
+    "test:brittle:generate": "brittle -r __tests__/all.brittle.js __tests__/**/*.brittle.test.js"
   },
   "dependencies": {
     "autobase": "^6.0.0-rc10",

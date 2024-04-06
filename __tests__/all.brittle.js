@@ -7,7 +7,8 @@ async function runTests () {
 
   test.pause()
 
-  await import('./e2e.brittle.test.js')
+  await import('./e2e/singleDevice.brittle.test.js')
+  await import('./e2e/twoDevices.brittle.test.js')
 
   test.resume()
 }

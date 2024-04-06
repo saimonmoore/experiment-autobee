@@ -2,8 +2,8 @@ import { test } from "brittle";
 import RAM from "random-access-memory";
 import b4a from "b4a";
 import createTestnet from "hyperdht/testnet.js";
-import { Mneme, sha256 } from "../index.js";
-import { waitUntil } from "./testHelpers.js";
+import { Mneme, sha256 } from "../../index.js";
+import { waitUntil } from "../testHelpers.js";
 
 const user1Email = "personalLocal@bar.com";
 const user1Hash = sha256(user1Email);
@@ -12,58 +12,7 @@ const user2Email = "personalRemote@bar.com";
 const user2Hash = sha256(user2Email);
 const user2Key = Mneme.USERS_KEY + user2Hash;
 
-test("E2E test", async (t) => {
-  // t.test("When single own device A, ", async (t) => {
-  //   let testnet;
-  //   let mnemeA;
-
-  //   // Setup
-  //   testnet = await createTestnet(1, { teardown: t.teardown });
-  //   t.teardown(() => testnet.destroy(), { order: Infinity });
-
-  //   mnemeA = new Mneme(undefined, RAM.reusable(), testnet.bootstrap);
-
-  //   t.teardown(() => mnemeA && mnemeA.destroy());
-
-  //   await mnemeA.start();
-
-  //   t.test("autobee", async (t) => {
-  //     await t.execution(async () => {
-  //       const isWritable = await waitUntil(
-  //         () => mnemeA.privateAutoBee.writable
-  //       );
-  //       t.ok(isWritable, "should be writable");
-  //     });
-  //   });
-
-  //   t.test("when a user is stored", async (t) => {
-  //     await mnemeA.addUser(user1Email);
-
-  //     await t.execution(async () => {
-  //       let result;
-  //       try {
-  //         result = await waitUntil(async () => {
-  //           return await mnemeA.privateAutoBee.get(user1Key);
-  //         });
-
-  //         t.ok(result, "the user's data should be retrievable");
-  //         t.is(result.key, user1Key, "and the index key should match");
-  //         t.alike(
-  //           result.value,
-  //           { hash: user1Hash, email: user1Email },
-  //           "and original data should match"
-  //         );
-  //       } catch (error) {
-  //         t.fail(error);
-  //       }
-  //     });
-  //   });
-
-  //   const dbKeyA = b4a.toString(mnemeA.privateAutoBee.key, "hex");
-  //   t.ok(dbKeyA, "Database key should exist");
-  // });
-
-  // TODO: Use inverted tests exclusively (split appropriately) and await the test promise before moving on (set the plan)
+test("when I have two devices", async (t) => {
   let testnet;
   let mnemeA;
   let mnemeB;
