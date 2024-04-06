@@ -63,6 +63,7 @@ test("E2E test", async (t) => {
   //   t.ok(dbKeyA, "Database key should exist");
   // });
 
+  // TODO: Use inverted tests exclusively (split appropriately) and await the test promise before moving on (set the plan)
   t.test("When both own devices A & B, ", async (t) => {
     let testnet;
     let mnemeA;
@@ -177,7 +178,6 @@ test("E2E test", async (t) => {
             return await mnemeA.privateAutoBee.get(friend2Key);
           });
 
-          console.log("===================> RESULT: ", result);
           connectedAutobeeDeviceB.ok(result, "the friend 2's data should also be retrievable on device A (replicated)");
           connectedAutobeeDeviceB.is(result.key, friend2Key, "and the index key should match");
           connectedAutobeeDeviceB.alike(
@@ -222,7 +222,7 @@ test("E2E test", async (t) => {
     });
 
     t.test("and when a friend is stored on device A", async (t) => {
-      await mnemeA.addFriend(friend1Email);
+      await mnemeA.addUser(friend1Email);
 
       await t.execution(async () => {
         let result;

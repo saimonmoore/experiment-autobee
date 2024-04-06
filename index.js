@@ -2,12 +2,15 @@ import Hyperswarm from "hyperswarm";
 import Corestore from "corestore";
 import b4a from "b4a";
 import goodbye from "graceful-goodbye";
+import { isText, isBinary, getEncoding } from "istextorbinary";
 
 import Autobee from "./db.js";
 
 import crypto from "crypto";
 
 import readline from "readline";
+import { write } from "fs";
+import { get } from "http";
 
 const isTestRunning = process.env.NODE_ENV === "test";
 
@@ -34,11 +37,7 @@ export class Mneme {
   peerDiscoverySession;
   swarm;
 
-  constructor(
-    bootstrapPrivateCorePublicKey,
-    storage,
-    bootstrapSwarm,
-  ) {
+  constructor(bootstrapPrivateCorePublicKey, storage, bootstrapSwarm) {
     this.bootstrapPrivateCorePublicKey = bootstrapPrivateCorePublicKey;
 
     // create a corestore instance with the given location
@@ -58,13 +57,31 @@ export class Mneme {
   async start() {
     await this.initPrivateBee();
     await this.initSwarm();
+    await this.initInternalComms();
+
+    // SIGNUP HANDSHAKE:
+    // As B, store the keypair in the user entry in the private autobee.
+    // As A, setup a listener for the keypair in the private autobee.
+    // e.g. while autobase A doesn't have the keypair, it should wait for the keypair to be added to the autobase.
+    // const watcher = db.watch([range])
+    // await watcher.ready()
+    //
+    // for await (const [current, previous] of watcher) {
+    //   console.log(current.version)
+    //   console.log(previous.version)
+    // }
+    // As A, when the event is emitted, add the writer to the private autobee.
 
     if (this.privateAutoBee.writable) {
-      console.log("privateAutoBee is writable!");
+      console.log("privateAutoBee is writable!", {
+        peerKey: this.peerKey,
+      });
     }
 
     if (!this.privateAutoBee.writable) {
-      console.log("privateAutoBee isnt writable yet");
+      console.log("privateAutoBee isnt writable yet", {
+        peerKey: this.peerKey,
+      });
       console.log("have another writer add the following key");
       console.log(b4a.toString(this.privateAutoBee.local.key, "hex"));
     }
@@ -124,7 +141,7 @@ export class Mneme {
   async initSwarm() {
     // Pear.teardown(() => this.destroy());
     process.once("SIGINT", () => {
-      console.log("\r[swarm#SIGNIT] destroying swarm...");
+      console.log("\r[swarm#SIGINT] destroying swarm...");
       this.destroy();
     });
 
@@ -134,6 +151,21 @@ export class Mneme {
 
       console.log("\r[swarm#connection] Peer joined...", {
         peer,
+      });
+
+      // Write our own public key to the peer
+      // e.g. the peer is likely the first device to have an account (e.g. the first writer)
+      // so we need to write our public key to the peer so they can add us as a writer to their autobase.
+      const directConnection = this.swarm.dht.connect(peerInfo.publicKey);
+      directConnection.once("open", () => {
+        // Delay a bit to ensure the other side is listening...
+        setTimeout(() => {
+          directConnection.write(
+            JSON.stringify({
+              writer: this.peerKey,
+            })
+          );
+        }, 1000);
       });
 
       connection.on("close", () => {
@@ -227,25 +259,99 @@ export class Mneme {
       b4a.toString(this.privateAutoBee.discoveryKey, "hex")
     );
 
+    // Set our peerKey
+    this.dhtKeypair = this.swarm.keyPair;
+    this.peerKey = b4a.toString(this.dhtKeypair.publicKey, "hex");
+    console.log("MY PEER KEY =================> ", { peerKey: this.peerKey });
+
     !isTestRunning && rl.pause();
   }
 
+  async initInternalComms() {
+    this.dhtServer = this.swarm.dht.createServer((conn) => {
+      console.log("[InternalComms] got connection!");
+      conn.on("data", (data) => {
+        const chunk = data.toString();
+        const encoding = getEncoding(data);
+        const chunkIsText = isText(null, data);
+        console.log("[InternalComms] got data:", { chunk });
+
+        if (chunkIsText && encoding === "utf8" && chunk.includes("writer")) {
+          console.log("[InternalComms] got writer data:", { chunk, encoding });
+
+          try {
+            const { writer } = JSON.parse(chunk);
+            console.log("[InternalComms] got writer:", { writer });
+          } catch (error) {
+            console.error("[InternalComms] error parsing writer data:", {
+              chunk,
+              error,
+            });
+          }
+        }
+
+        if (isBinary(null, data)) {
+          console.log("[InternalComms] got binary data:", {
+            chunk,
+            encoding: getEncoding(data),
+          });
+        }
+      });
+      // here we need to check if we are already a writer
+      // if not, we need to add the writer to the autobase (ONCE)
+    });
+
+    // Setup a connection between ourselves and the DHT server
+    this.dhtServer.listen(this.dhtKeypair).then(() => {
+      console.log("[InternalComms] listening on:", {
+        peerKey: this.peerKey,
+      });
+    });
+  }
+
   async indexUsers(batch, operation) {
-    const { email } = operation;
+    const { email, writers } = operation;
     const hash = sha256(email);
+    const key = Mneme.USERS_KEY + hash;
+
+    // Check if the user already exists
+    const result = await this.privateAutoBee.get(key);
+
+    // If doesn't exist, we can assume it's the first time the user is being added
+    // because it's the private core and only the device owner can write to it
+    // and all the device owner's devices should be in sync.
+    // Action: We add the writer of the private core to the user's data.
+
+    // If the user already exists, we can assume it's a new writer being added
+    // because the user already exists and the account owner is adding the writer of
+    // their other device to the user's data.
+    // Action: We append the new writer to the user's data, so 'writers' should be a Set.
+    if (result) {
+      const existingUser = result.value;
+
+      console.log("[indexUsers] User already exists", {
+        existingUser,
+        email,
+        hash,
+        key,
+        newWriters: writers,
+      });
+    }
+
     console.log("[indexUsers] Indexing user", {
       email,
       hash,
-      key: Mneme.USERS_KEY + hash,
+      key,
     });
-    await batch.put(Mneme.USERS_KEY + hash, { hash, email });
+    await batch.put(key, { hash, email });
   }
 
-  async addFriend(email) {
+  async addUser(email) {
     await this.privateAutoBee.appendOperation(
       JSON.stringify({
         type: "createUser",
         email,
+        writers: [this.peerKey],
       })
     );
   }
@@ -267,9 +373,9 @@ export class Mneme {
     console.log("In the repl:");
     console.log();
     console.log("await mneme.start();");
-    console.log("await mneme.addFriend('foo@bar.com');");
+    console.log("await mneme.addUser('foo@bar.com');");
     console.log();
-    console.log("You should see the friend added to the private core");
+    console.log("You should see the user added to the private core");
     console.log();
     console.log(
       "Take the public key of the private core (bootstrap key) and run the following command in terminal 2:"
@@ -291,7 +397,7 @@ export class Mneme {
     console.log();
     console.log("In repl 2:");
     console.log();
-    console.log("await mneme.addFriend('foo@bar.com');");
+    console.log("await mneme.addUser('foo@bar.com');");
     console.log();
     console.log("You should now see 2 entries in the private core");
   }
@@ -321,12 +427,12 @@ if (!isTestRunning) {
     if (line === "exit") {
       console.log("exiting");
       process.exit(0);
-    } else if (line === "friend1") {
-      await mneme.addFriend("foo@bar.com");
+    } else if (line === "user1") {
+      await mneme.addUser("foo@bar.com");
       rl.prompt();
       return;
-    } else if (line === "friend2") {
-      await mneme.addFriend("remote@bar.com");
+    } else if (line === "user2") {
+      await mneme.addUser("remote@bar.com");
       rl.prompt();
       return;
     }
