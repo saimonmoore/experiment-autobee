@@ -27,6 +27,7 @@ const rl =
 
 export class Mneme {
   static USERS_KEY = "org.mneme.users!";
+  static USER_PEER_WRITER = "org.mneme.user.peer.writer";
 
   currentUser;
   peers = {};
@@ -57,7 +58,7 @@ export class Mneme {
   async start() {
     await this.initPrivateBee();
     await this.initSwarm();
-    await this.initInternalComms();
+    // await this.initInternalComms();
 
     // SIGNUP HANDSHAKE:
     // As B, store the keypair in the user entry in the private autobee.
@@ -153,25 +154,77 @@ export class Mneme {
         peer,
       });
 
-      // Write our own public key to the peer
+      // Write our own private autobee's local public key to the peer
       // e.g. the peer is likely the first device to have an account (e.g. the first writer)
       // so we need to write our public key to the peer so they can add us as a writer to their autobase.
-      const directConnection = this.swarm.dht.connect(peerInfo.publicKey);
-      directConnection.once("open", () => {
-        // Delay a bit to ensure the other side is listening...
-        setTimeout(() => {
-          directConnection.write(
-            JSON.stringify({
-              writer: this.peerKey,
-            })
-          );
-        }, 1000);
-      });
+      // Delay a bit to ensure the other side is listening...
+      setTimeout(() => {
+        const remotePublicKey = b4a.toString(
+          this.privateAutoBee.local.key,
+          "hex"
+        );
+        console.log(
+          "...read-only peer sending over remote private autobee public key",
+          {
+            remotePublicKey,
+          }
+        );
+        connection.write(
+          JSON.stringify({
+            [Mneme.USER_PEER_WRITER]: remotePublicKey,
+          })
+        );
+      }, 1000);
 
-      // TODO: How to get rid of these event handlers? Or maybe we don't need to?
-      directConnection.on("error", function (error) {
-        // Without this handler the error event causes an unhandled exception
-        console.log("============= Error on peers side... =============", { error });
+      connection.on("data", (data) => {
+        const chunk = data.toString();
+        const encoding = getEncoding(data);
+        const chunkIsText = isText(null, data);
+
+        if (
+          chunkIsText &&
+          encoding === "utf8" &&
+          chunk.includes(Mneme.USER_PEER_WRITER)
+        ) {
+          try {
+            const writer = JSON.parse(chunk)[Mneme.USER_PEER_WRITER];
+            console.log("...read-write peer got other device's peer key", {
+              peerKey: writer,
+              length: writer.length,
+            });
+
+            if (writer && writer.length === 64) {
+              console.log("[InternalComms] adding writer to private autobee", {
+                writer,
+              });
+
+              // Add our other device as a writer to the private autobee
+              this.addPrivateWriter(writer)
+                .then(() => {
+                  console.log(
+                    "[InternalComms] added writer to private autobee",
+                    writer
+                  );
+                })
+                .catch((error) => {
+                  // TODO: We're getting an error here as if the writable peer is trying to add itself as a writer
+                  // but we can maybe ignore this error?
+                  console.error(
+                    "[InternalComms] error adding writer to private autobee",
+                    {
+                      writer,
+                      error,
+                    }
+                  );
+                });
+            }
+          } catch (error) {
+            console.error("[InternalComms] error parsing writer data:", {
+              chunk,
+              error,
+            });
+          }
+        }
       });
 
       connection.on("close", () => {
@@ -278,19 +331,46 @@ export class Mneme {
 
   async initInternalComms() {
     this.dhtServer = this.swarm.dht.createServer((conn) => {
-      console.log("[InternalComms] got connection!");
       conn.on("data", (data) => {
         const chunk = data.toString();
         const encoding = getEncoding(data);
         const chunkIsText = isText(null, data);
-        console.log("[InternalComms] got data:", { chunk });
 
-        if (chunkIsText && encoding === "utf8" && chunk.includes("writer")) {
-          console.log("[InternalComms] got writer data:", { chunk, encoding });
-
+        if (
+          chunkIsText &&
+          encoding === "utf8" &&
+          chunk.includes(Mneme.USER_PEER_WRITER)
+        ) {
           try {
-            const { writer } = JSON.parse(chunk);
-            console.log("[InternalComms] got writer:", { writer });
+            const writer = JSON.parse(chunk)[Mneme.USER_PEER_WRITER];
+            console.log("...read-write peer got other device's peer key", {
+              peerKey: writer,
+              length: writer.length,
+            });
+
+            if (writer && writer.length === 64) {
+              console.log("[InternalComms] adding writer to private autobee", {
+                writer,
+              });
+
+              // Add our other device as a writer to the private autobee
+              this.addPrivateWriter(writer)
+                .then(() => {
+                  console.log(
+                    "[InternalComms] added writer to private autobee",
+                    writer
+                  );
+                })
+                .catch((error) => {
+                  console.error(
+                    "[InternalComms] error adding writer to private autobee",
+                    {
+                      writer,
+                      error,
+                    }
+                  );
+                });
+            }
           } catch (error) {
             console.error("[InternalComms] error parsing writer data:", {
               chunk,
@@ -298,16 +378,7 @@ export class Mneme {
             });
           }
         }
-
-        if (isBinary(null, data)) {
-          console.log("[InternalComms] got binary data:", {
-            chunk,
-            encoding: getEncoding(data),
-          });
-        }
       });
-      // here we need to check if we are already a writer
-      // if not, we need to add the writer to the autobase (ONCE)
     });
 
     // Setup a connection between ourselves and the DHT server
