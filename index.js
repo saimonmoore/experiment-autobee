@@ -168,10 +168,19 @@ export class Mneme {
         }, 1000);
       });
 
+      // TODO: How to get rid of these event handlers? Or maybe we don't need to?
+      directConnection.on("error", function (error) {
+        // Without this handler the error event causes an unhandled exception
+        console.log("============= Error on peers side... =============", { error });
+      });
+
       connection.on("close", () => {
         console.log("\r[swarm#connection] Peer left...", {
           peer: b4a.toString(peerInfo.publicKey, "hex"),
         });
+
+        // We should close the direct connection as well
+        // this.dhtServer.close();
       });
 
       connection.on("error", (error) => {
@@ -363,6 +372,8 @@ export class Mneme {
   async destroy() {
     this.swarm.destroy();
     this.privateAutoBee && (await this.privateAutoBee.close());
+    // TODO: Not sure if this is necessary
+    this.dhtServer && this.dhtServer.close();
   }
 
   info() {
