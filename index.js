@@ -25,6 +25,365 @@ const rl =
     output: process.stdout,
   });
 
+export class User {
+  static USERS_KEY = "org.mneme.users!";
+
+  constructor({ email, username }) {
+    this.email = email;
+    this.username = username;
+  }
+
+  get hash() {
+    return sha256(this.email);
+  }
+
+  get key() {
+    return User.USERS_KEY + this.hash;
+  }
+
+  toProperties() {
+    return {
+      email: this.email,
+      username: this.username,
+    };
+  }
+}
+
+export class UserUseCase {
+  constructor(privateAutoBee) {
+    this.privateAutoBee = privateAutoBee;
+  }
+
+  async createUser(user) {
+    await this.privateAutoBee.appendOperation(
+      JSON.stringify({
+        type: UserIndexer.CREATE_USER_ACTION,
+        user: user.toProperties(),
+        writers: [this.privateAutoBee.local.key],
+      })
+    );
+  }
+}
+
+export class UserIndexer {
+  static CREATE_USER_ACTION = "createUser";
+
+  constructor(privateAutoBee) {
+    this.privateAutoBee = privateAutoBee;
+  }
+
+  async handleOperation(batch, operation) {
+    if (operation.type === UserIndexer.CREATE_USER_ACTION) {
+      await this.indexUsers(batch, operation);
+    }
+  }
+
+  async indexUsers(batch, operation) {
+    const { email, writers } = operation;
+    const hash = sha256(email);
+    const key = Mneme.USERS_KEY + hash;
+
+    // Check if the user already exists
+    const result = await this.privateAutoBee.get(key);
+
+    // If doesn't exist, we can assume it's the first time the user is being added
+    // because it's the private core and only the device owner can write to it
+    // and all the device owner's devices should be in sync.
+    // Action: We add the writer of the private core to the user's data.
+
+    // If the user already exists, we can assume it's a new writer being added
+    // because the user already exists and the account owner is adding the writer of
+    // their other device to the user's data.
+    // Action: We append the new writer to the user's data, so 'writers' should be a Set.
+    if (result) {
+      const existingUser = result.value;
+
+      console.log("[indexUsers] User already exists", {
+        existingUser,
+        email,
+        hash,
+        key,
+        newWriters: writers,
+      });
+    }
+
+    console.log("[indexUsers] Indexing user", {
+      email,
+      hash,
+      key,
+    });
+    await batch.put(key, { hash, email });
+  }
+}
+
+export class SwarmManager {
+  static USER_PEER_WRITER = "org.mneme.user.peer.writer";
+
+  constructor(privateAutoBee, bootstrapSwarm) {
+    this.swarm = bootstrapSwarm
+      ? new Hyperswarm({ bootstrap: bootstrapSwarm })
+      : new Hyperswarm();
+    this.privateAutoBee = privateAutoBee;
+  }
+
+  get dhtKeypair() {
+    return this.swarm.keyPair;
+  }
+
+  get peerKey() {
+    return b4a.toString(this.dhtKeypair.publicKey, "hex");
+  }
+
+  async start() {
+    this.swarm.on("connection", this.handleSwarmConnection.bind(this));
+    this.swarm.on("update", this.handleSwarmUpdate.bind(this));
+
+    this.joinSwarm(this.privateAutoBee.discoveryKey);
+  }
+
+  async handleSwarmConnection(connection, peerInfo) {
+    const peerKey = b4a.toString(peerInfo.publicKey, "hex");
+    console.log("[swarm#connection] Peer joined...", { peerKey });
+
+    setTimeout(() => {
+      this.sendPeerWriter();
+    }, 1000);
+
+    connection.on("data", (data) => {
+      this.makeRemotePeerPrivateAutobaseWritable(data);
+    });
+
+    connection.on("close", () => {
+      console.log("\r[swarm#connection] Peer left...", {
+        peerKey,
+      });
+    });
+
+    connection.on("error", (error) => {
+      console.error("\r[swarm#connection] error...", {
+        error,
+      });
+    });
+
+    if (this.bootstrapPrivateCorePublicKey) {
+      this.peers[peerInfo.publicKey] = peerInfo;
+    } else {
+      this.currentUser = peer;
+    }
+
+    !isTestRunning && rl.prompt();
+
+    this.store.replicate(connection);
+  }
+
+  async handleSwarmUpdate() {
+    console.log("[swarm#update] Swarm update...");
+  }
+
+  async joinSwarm(discoveryKey) {
+    this.swarm.join(discoveryKey);
+    await this.swarm.flushed();
+    console.log(
+      "[swarm] Joined swarm with topic:",
+      b4a.toString(discoveryKey, "hex")
+    );
+
+    !isTestRunning && rl.pause();
+  }
+
+  async sendPeerWriter() {
+    console.log(
+      "...read-only peer sending over remote private autobee public key",
+      {
+        localPublicKey: this.privateAutoBee.localPublicKey,
+      }
+    );
+    connection.write(
+      JSON.stringify({
+        [SwarmManager.USER_PEER_WRITER]: this.privateAutoBee.localPublicKey,
+      })
+    );
+  }
+
+  async makeRemotePeerPrivateAutobaseWritable(data) {
+    const chunk = data.toString();
+    const encoding = getEncoding(data);
+    const chunkIsText = isText(null, data);
+
+    if (
+      chunkIsText &&
+      encoding === "utf8" &&
+      chunk.includes(Mneme.USER_PEER_WRITER)
+    ) {
+      try {
+        const writer = JSON.parse(chunk)[Mneme.USER_PEER_WRITER];
+        console.log("...read-write peer got other device's peer key", {
+          peerKey: writer,
+          length: writer.length,
+        });
+
+        if (writer && writer.length === 64) {
+          console.log("[InternalComms] adding writer to private autobee", {
+            writer,
+          });
+
+          // Add our other device as a writer to the private autobee
+          this.privateAutoBee
+            .appendWriter(writer)
+            .then(() => {
+              console.log(
+                "[InternalComms] added writer to private autobee",
+                writer
+              );
+            })
+            .catch((error) => {
+              // TODO: We're getting an error here as if the writable peer is trying to add itself as a writer
+              // but we can maybe ignore this error?
+              console.error(
+                "[InternalComms] error adding writer to private autobee",
+                {
+                  writer,
+                  error,
+                }
+              );
+            });
+        }
+      } catch (error) {
+        console.error("[InternalComms] error parsing writer data:", {
+          chunk,
+          error,
+        });
+      }
+    }
+  }
+
+  async destroy() {
+    this.swarm.destroy();
+  }
+}
+
+export class PrivateStore {
+  static CREATE_USER_ACTION = "createUser";
+
+  constructor(privateStore, bootstrapPrivateCorePublicKey) {
+    this.privateStore = privateStore;
+    this.bootstrapPrivateCorePublicKey = bootstrapPrivateCorePublicKey;
+    this.privateAutoBee = this.setupPrivateBee();
+    this.indexers = [new UserIndexer(this.privateAutoBee)];
+  }
+
+  get localPublicKey() {
+    return b4a.toString(this.privateAutoBee.local.key, "hex");
+  }
+
+  get discoveryKey() {
+    return b4a.toString(this.privateAutoBee.discoveryKey, "hex");
+  }
+
+  async start() {
+    await this.privateAutoBee.update();
+    this.privateAutoBee.view.core.on("append", this.handleAppend.bind(this));
+  }
+
+  async destroy() {
+    await this.privateAutoBee.close();
+  }
+
+  async handleApplyEvents(batch, view, base) {
+    const batchedBeeOperations = view.batch({ update: false });
+
+    for (const { value } of batch) {
+      const operation = JSON.parse(value);
+
+      this.indexers.forEach((indexer) =>
+        indexer.handleOperation(batch, operation)
+      );
+    }
+
+    await batchedBeeOperations.flush();
+
+    await Autobee.apply(batch, view, base);
+  }
+
+  async handleAppendEvents() {
+    // Skip append event for hyperbee's header block
+    if (this.privateAutoBee.view.version === 1) return;
+
+    !isTestRunning && rl.pause();
+
+    console.log("\r[privateAutoBee#onAppend] current db key/value pairs: ");
+    for await (const node of this.privateAutoBee.createReadStream()) {
+      console.log("key", node.key);
+      console.log("value", node.value);
+      console.log();
+    }
+
+    !isTestRunning && rl.prompt();
+  }
+
+  setupPrivateBee() {
+    console.log("Initializing private autobee...", {
+      privateBootstrap: this.bootstrapPrivateCorePublicKey,
+    });
+
+    const privateAutoBee = new Autobee(
+      { store: this.privateStore, coreName: "private" },
+      this.bootstrapPrivateCorePublicKey,
+      {
+        apply: this.handleApplyEvents,
+      }
+    ).on("error", console.error);
+
+    return privateAutoBee;
+  }
+}
+
+export class MnemeRefactored {
+  constructor(bootstrapPrivateCorePublicKey, storage, bootstrapSwarm) {
+    // Persistence
+    this.cores = new Corestore(storage || "./data");
+    this.privateCores = this.cores.namespace("private");
+    this.privateStore = new PrivateStore(
+      this.privateCores,
+      bootstrapPrivateCorePublicKey
+    );
+
+    // Application
+    this.userManager = new UserUseCase(this.privateStore.privateAutoBee);
+
+    // Networking
+    this.swarmManager = new SwarmManager(
+      this.privateStore.privateAutoBee,
+      bootstrapSwarm
+    );
+  }
+
+  async start() {
+    await this.privateStore.start();
+    await this.publicStore.start();
+    await this.swarmManager.start();
+
+    goodbye(async () => {
+      await this.destroy();
+    });
+  }
+
+  async createUser(user) {
+    await this.userManager.createUser(user);
+  }
+
+  async destroy() {
+    console.log("\r[SIGINT] destroying swarm...");
+
+    await this.swarmManager.destroy();
+    await this.privateStore.destroy();
+  }
+
+  info() {
+    console.log('node index.js "bootstrapPrivateCorePublicKey" "./storage2"');
+  }
+}
+
 export class Mneme {
   static USERS_KEY = "org.mneme.users!";
   static USER_PEER_WRITER = "org.mneme.user.peer.writer";
@@ -58,20 +417,6 @@ export class Mneme {
   async start() {
     await this.initPrivateBee();
     await this.initSwarm();
-    // await this.initInternalComms();
-
-    // SIGNUP HANDSHAKE:
-    // As B, store the keypair in the user entry in the private autobee.
-    // As A, setup a listener for the keypair in the private autobee.
-    // e.g. while autobase A doesn't have the keypair, it should wait for the keypair to be added to the autobase.
-    // const watcher = db.watch([range])
-    // await watcher.ready()
-    //
-    // for await (const [current, previous] of watcher) {
-    //   console.log(current.version)
-    //   console.log(previous.version)
-    // }
-    // As A, when the event is emitted, add the writer to the private autobee.
 
     if (this.privateAutoBee.writable) {
       console.log("privateAutoBee is writable!", {
@@ -329,66 +674,6 @@ export class Mneme {
     !isTestRunning && rl.pause();
   }
 
-  async initInternalComms() {
-    this.dhtServer = this.swarm.dht.createServer((conn) => {
-      conn.on("data", (data) => {
-        const chunk = data.toString();
-        const encoding = getEncoding(data);
-        const chunkIsText = isText(null, data);
-
-        if (
-          chunkIsText &&
-          encoding === "utf8" &&
-          chunk.includes(Mneme.USER_PEER_WRITER)
-        ) {
-          try {
-            const writer = JSON.parse(chunk)[Mneme.USER_PEER_WRITER];
-            console.log("...read-write peer got other device's peer key", {
-              peerKey: writer,
-              length: writer.length,
-            });
-
-            if (writer && writer.length === 64) {
-              console.log("[InternalComms] adding writer to private autobee", {
-                writer,
-              });
-
-              // Add our other device as a writer to the private autobee
-              this.addPrivateWriter(writer)
-                .then(() => {
-                  console.log(
-                    "[InternalComms] added writer to private autobee",
-                    writer
-                  );
-                })
-                .catch((error) => {
-                  console.error(
-                    "[InternalComms] error adding writer to private autobee",
-                    {
-                      writer,
-                      error,
-                    }
-                  );
-                });
-            }
-          } catch (error) {
-            console.error("[InternalComms] error parsing writer data:", {
-              chunk,
-              error,
-            });
-          }
-        }
-      });
-    });
-
-    // Setup a connection between ourselves and the DHT server
-    this.dhtServer.listen(this.dhtKeypair).then(() => {
-      console.log("[InternalComms] listening on:", {
-        peerKey: this.peerKey,
-      });
-    });
-  }
-
   async indexUsers(batch, operation) {
     const { email, writers } = operation;
     const hash = sha256(email);
@@ -443,8 +728,6 @@ export class Mneme {
   async destroy() {
     this.swarm.destroy();
     this.privateAutoBee && (await this.privateAutoBee.close());
-    // TODO: Not sure if this is necessary
-    this.dhtServer && this.dhtServer.close();
   }
 
   info() {
@@ -495,7 +778,7 @@ if (!isTestRunning) {
 
   console.log("Starting Mneme with args", { args });
 
-  const mneme = new Mneme(bootstrapPrivateCorePublicKey, storage);
+  const mneme = new MnemeRefactored(bootstrapPrivateCorePublicKey, storage);
   mneme.info();
 
   await mneme.start();
@@ -510,16 +793,18 @@ if (!isTestRunning) {
       console.log("exiting");
       process.exit(0);
     } else if (line === "user1") {
-      await mneme.addUser("foo@bar.com");
+      await mneme.createUser("local@bar.com");
       rl.prompt();
       return;
     } else if (line === "user2") {
-      await mneme.addUser("remote@bar.com");
+      await mneme.createUser("remote1@bar.com");
+      rl.prompt();
+      return;
+    } else if (line === "user3") {
+      await mneme.createUser("remote2@bar.com");
       rl.prompt();
       return;
     }
-
-    await mneme.addPrivateWriter(line);
     rl.prompt();
   });
   rl.prompt();
