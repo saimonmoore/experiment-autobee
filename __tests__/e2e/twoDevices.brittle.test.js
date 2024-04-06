@@ -73,13 +73,8 @@ test("when I have two devices", async (t) => {
       }
     });
 
-    // Add autoBee on device B as a writer on device A
-    // Now autobee on device B should be writable
-    const writerKey = b4a.toString(mnemeB.privateAutoBee.local.key, "hex");
-
-    await mnemeA.addPrivateWriter(writerKey);
-
     // Wait a few seconds for the core on device B to become writable
+    // and for device B's autobee to become writable
     await new Promise((resolve) => {
       setTimeout(resolve, 1000);
     });
@@ -90,6 +85,7 @@ test("when I have two devices", async (t) => {
       "should be writable"
     );
 
+    // ACTION: Store user data from device B
     await mnemeB.addUser(user2Email);
 
     await autobeeDeviceBIsReplicated.execution(async () => {
@@ -166,7 +162,7 @@ test("when I have two devices", async (t) => {
     mnemeB && (await mnemeB.destroy());
   });
 
-  // ACTION
+  // ACTION: Start mneme on device A
   await mnemeA.start();
 
   const whenSignupOnDeviceA = t.test(
@@ -186,7 +182,7 @@ test("when I have two devices", async (t) => {
   );
   whenUserDataIsStoredOnDeviceA.plan(5);
 
-  // ACTION
+  // ACTION: Store user data from device A
   await mnemeA.addUser(user1Email);
 
   await whenUserDataIsStoredOnDeviceA.execution(async () => {
