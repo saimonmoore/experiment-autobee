@@ -8,11 +8,11 @@ async function runTests () {
   test.pause()
 
   // unit
-  await import('./delegatingProxy.brittle.test.js')
+  // await import('./delegatingProxy.brittle.test.js')
 
   // e2e
   // await import('./e2e/singleDevice.brittle.test.js')
-  // await import('./e2e/twoDevices.brittle.test.js')
+  await import('./e2e/twoDevices.brittle.test.js')
 
   test.resume()
 }

@@ -2,16 +2,22 @@ import { test } from "brittle";
 import RAM from "random-access-memory";
 import b4a from "b4a";
 import createTestnet from "hyperdht/testnet.js";
-import { sha256 } from "../../sha256.js";
+
 import { Mneme } from "../../Mneme.js";
+import { User } from "../../User.js";
 import { waitUntil } from "../testHelpers.js";
 
 const user1Email = "personalLocal@bar.com";
-const user1Hash = sha256(user1Email);
-const user1Key = Mneme.USERS_KEY + user1Hash;
+const user1 = User.fromProperties({
+  email: user1Email,
+  username: user1Email.split("@")[0],
+});
+
 const user2Email = "personalRemote@bar.com";
-const user2Hash = sha256(user2Email);
-const user2Key = Mneme.USERS_KEY + user2Hash;
+const user2 = User.fromProperties({
+  email: user2Email,
+  username: user2Email.split("@")[0],
+});
 
 test("when I have two devices", async (t) => {
   let testnet;
@@ -19,14 +25,16 @@ test("when I have two devices", async (t) => {
   let mnemeB;
 
   const onConnection = async (connection, peerInfo) => {
-    const numberOfPeersA = mnemeA.swarm.peers.size;
-    const numberOfPeersB = mnemeB.swarm.peers.size;
+    const numberOfPeersA = mnemeA.swarmManager.swarm.peers.size;
+    const numberOfPeersB = mnemeB.swarmManager.swarm.peers.size;
 
     if (numberOfPeersA < 1 || numberOfPeersB < 1) {
       return;
     }
 
-    const autobeeDeviceBIsReplicated = t.test("autobee on device B has user stored on device A replicated to it");
+    const autobeeDeviceBIsReplicated = t.test(
+      "autobee on device B has user stored on device A replicated to it"
+    );
     autobeeDeviceBIsReplicated.plan(16);
 
     autobeeDeviceBIsReplicated.ok(
@@ -38,7 +46,7 @@ test("when I have two devices", async (t) => {
       "device B connected to device A"
     );
     autobeeDeviceBIsReplicated.is(
-      mnemeB.privateAutoBee.writable,
+      mnemeB.privateStore.autoBee.writable,
       false,
       "should NOT be writable"
     );
@@ -52,7 +60,7 @@ test("when I have two devices", async (t) => {
       let result;
       try {
         result = await waitUntil(async () => {
-          return await mnemeB.privateAutoBee.get(user1Key);
+          return await mnemeB.privateStore.get(user1.key);
         });
 
         autobeeDeviceBIsReplicated.ok(
@@ -61,12 +69,12 @@ test("when I have two devices", async (t) => {
         );
         autobeeDeviceBIsReplicated.is(
           result.key,
-          user1Key,
+          user1.key,
           "and the index key should match"
         );
         autobeeDeviceBIsReplicated.alike(
-          result.value,
-          { hash: user1Hash, email: user1Email },
+          result.value.user,
+          { hash: user1.hash, email: user1.email, username: user1.username },
           "and original data should match"
         );
       } catch (error) {
@@ -81,19 +89,19 @@ test("when I have two devices", async (t) => {
     });
 
     autobeeDeviceBIsReplicated.is(
-      mnemeB.privateAutoBee.writable,
+      mnemeB.privateStore.autoBee.writable,
       true,
       "should be writable"
     );
 
     // ACTION: Store user data from device B
-    await mnemeB.addUser(user2Email);
+    await mnemeB.createUser(user2);
 
     await autobeeDeviceBIsReplicated.execution(async () => {
       let result;
       try {
         result = await waitUntil(async () => {
-          return await mnemeB.privateAutoBee.get(user2Key);
+          return await mnemeB.privateStore.get(user2.key);
         });
 
         autobeeDeviceBIsReplicated.ok(
@@ -102,12 +110,12 @@ test("when I have two devices", async (t) => {
         );
         autobeeDeviceBIsReplicated.is(
           result.key,
-          user2Key,
+          user2.key,
           "and the index key should match"
         );
         autobeeDeviceBIsReplicated.alike(
-          result.value,
-          { hash: user2Hash, email: user2Email },
+          result.value.user,
+          { hash: user2.hash, email: user2.email, username: user2.username },
           "and original data should match"
         );
       } catch (error) {
@@ -124,7 +132,7 @@ test("when I have two devices", async (t) => {
       let result;
       try {
         result = await waitUntil(async () => {
-          return await mnemeA.privateAutoBee.get(user2Key);
+          return await mnemeA.privateStore.get(user2.key);
         });
 
         autobeeDeviceBIsReplicated.ok(
@@ -133,12 +141,12 @@ test("when I have two devices", async (t) => {
         );
         autobeeDeviceBIsReplicated.is(
           result.key,
-          user2Key,
+          user2.key,
           "and the index key should match"
         );
         autobeeDeviceBIsReplicated.alike(
-          result.value,
-          { hash: user2Hash, email: user2Email },
+          result.value.user,
+          { hash: user2.hash, email: user2.email, username: user2.username },
           "and original data should match"
         );
       } catch (error) {
@@ -156,7 +164,7 @@ test("when I have two devices", async (t) => {
   testnet = await createTestnet(2, { teardown: t.teardown });
 
   mnemeA = new Mneme(undefined, RAM.reusable(), testnet.bootstrap);
-  mnemeA.swarm.on("connection", onConnection);
+  mnemeA.swarmManager.swarm.on("connection", onConnection);
 
   t.teardown(async () => {
     mnemeA && (await mnemeA.destroy());
@@ -171,7 +179,7 @@ test("when I have two devices", async (t) => {
   );
   whenSignupOnDeviceA.plan(3);
   await whenSignupOnDeviceA.execution(async () => {
-    const isWritable = await waitUntil(() => mnemeA.privateAutoBee.writable);
+    const isWritable = await waitUntil(() => mnemeA.privateStore.autoBee.writable);
     whenSignupOnDeviceA.ok(isWritable, "should be writable");
   });
 
@@ -184,13 +192,13 @@ test("when I have two devices", async (t) => {
   whenUserDataIsStoredOnDeviceA.plan(5);
 
   // ACTION: Store user data from device A
-  await mnemeA.addUser(user1Email);
+  await mnemeA.createUser(user1);
 
   await whenUserDataIsStoredOnDeviceA.execution(async () => {
     let result;
     try {
       result = await waitUntil(async () => {
-        return await mnemeA.privateAutoBee.get(user1Key);
+        return await mnemeA.privateStore.get(user1.key);
       });
 
       whenUserDataIsStoredOnDeviceA.ok(
@@ -199,12 +207,12 @@ test("when I have two devices", async (t) => {
       );
       whenUserDataIsStoredOnDeviceA.is(
         result.key,
-        user1Key,
+        user1.key,
         "and the index key should match"
       );
       whenUserDataIsStoredOnDeviceA.alike(
-        result.value,
-        { hash: user1Hash, email: user1Email },
+        result.value.user,
+        { hash: user1.hash, email: user1.email, username: user1.username },
         "and original data should match"
       );
     } catch (error) {
@@ -217,7 +225,7 @@ test("when I have two devices", async (t) => {
   const whenUserLogInOnOnDeviceB = t.test("and when user logs in on device B");
   whenUserLogInOnOnDeviceB.plan(3);
 
-  const dbKeyA = b4a.toString(mnemeA.privateAutoBee.key, "hex");
+  const dbKeyA = mnemeA.privateStore.publicKeyString;
   whenUserLogInOnOnDeviceB.ok(
     dbKeyA,
     "and autobee on device (the server) A's database key should exist"
@@ -228,7 +236,7 @@ test("when I have two devices", async (t) => {
       onConnection,
     });
 
-    mnemeB.swarm.on("connection", onConnection);
+    mnemeB.swarmManager.swarm.on("connection", onConnection);
 
     await mnemeB.start();
 

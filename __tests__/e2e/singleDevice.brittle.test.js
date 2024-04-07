@@ -2,16 +2,22 @@ import { test } from "brittle";
 import RAM from "random-access-memory";
 import b4a from "b4a";
 import createTestnet from "hyperdht/testnet.js";
-import { sha256 } from "../../sha256.js";
 import { Mneme } from "../../Mneme.js";
+import { User } from "../../User.js";
 import { waitUntil } from "../testHelpers.js";
 
 const user1Email = "personalLocal@bar.com";
-const user1Hash = sha256(user1Email);
-const user1Key = Mneme.USERS_KEY + user1Hash;
+const user1 = User.fromProperties({
+  email: user1Email,
+  username: user1Email.split("@")[0],
+});
+
 const user2Email = "personalRemote@bar.com";
-const user2Hash = sha256(user2Email);
-const user2Key = Mneme.USERS_KEY + user2Hash;
+const user2 = User.fromProperties({
+  email: user2Email,
+  username: user2Email.split("@")[0],
+});
+const user2Key = user2.key;
 
 test("When single own device A, ", async (t) => {
   const withPrivateAutobee = t.test("with private autobee");
@@ -30,7 +36,7 @@ test("When single own device A, ", async (t) => {
   await mnemeA.start();
 
   await withPrivateAutobee.execution(async () => {
-    const isWritable = await waitUntil(() => mnemeA.privateAutoBee.writable);
+    const isWritable = await waitUntil(() => mnemeA.privateStore.autoBee.writable);
     withPrivateAutobee.ok(isWritable, "should be writable");
   });
 
@@ -40,24 +46,28 @@ test("When single own device A, ", async (t) => {
   whenUserDataIsStored.plan(6);
 
   // Action
-  await mnemeA.addUser(user1Email);
+  await mnemeA.createUser(user1);
 
   await whenUserDataIsStored.execution(async () => {
     let result;
     try {
       result = await waitUntil(async () => {
-        return await mnemeA.privateAutoBee.get(user1Key);
+        return await mnemeA.privateStore.get(user1.key);
       });
 
       whenUserDataIsStored.ok(result, "the user's data should be retrievable");
       whenUserDataIsStored.is(
         result.key,
-        user1Key,
+        user1.key,
         "and the index key should match"
       );
       whenUserDataIsStored.alike(
-        result.value,
-        { hash: user1Hash, email: user1Email },
+        result.value.user,
+        {
+          hash: user1.hash,
+          email: user1.email,
+          username: user1.username,
+        },
         "and original data should match"
       );
     } catch (error) {
@@ -65,7 +75,7 @@ test("When single own device A, ", async (t) => {
     }
   });
 
-  const dbKeyA = b4a.toString(mnemeA.privateAutoBee.key, "hex");
+  const dbKeyA = mnemeA.privateStore.publicKeyString;
   whenUserDataIsStored.ok(dbKeyA, "Database key should exist");
 
   whenUserDataIsStored.pass("User data is stored successfully on device");
