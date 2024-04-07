@@ -2,7 +2,8 @@ import { test } from "brittle";
 import RAM from "random-access-memory";
 import b4a from "b4a";
 import createTestnet from "hyperdht/testnet.js";
-import { Mneme, sha256 } from "../../index.js";
+import { sha256 } from "../../sha256.js";
+import { Mneme } from "../../Mneme.js";
 import { waitUntil } from "../testHelpers.js";
 
 const user1Email = "personalLocal@bar.com";
