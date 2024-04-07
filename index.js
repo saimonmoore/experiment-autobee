@@ -27,6 +27,9 @@ const rl =
 
 export class User {
   static USERS_KEY = "org.mneme.users!";
+  static ACTIONS = {
+    CREATE: "createUser",
+  };
 
   constructor({ email, username }) {
     this.email = email;
@@ -43,6 +46,7 @@ export class User {
 
   toProperties() {
     return {
+      hash: this.hash,
       email: this.email,
       username: this.username,
     };
@@ -50,41 +54,37 @@ export class User {
 }
 
 export class UserUseCase {
-  constructor(privateAutoBee) {
-    this.privateAutoBee = privateAutoBee;
+  constructor(privateStore) {
+    this.privateStore = privateStore;
   }
 
   async createUser(user) {
-    await this.privateAutoBee.appendOperation(
+    await this.privateStore.appendOperation(
       JSON.stringify({
-        type: UserIndexer.CREATE_USER_ACTION,
+        type: User.ACTIONS.CREATE,
         user: user.toProperties(),
-        writers: [this.privateAutoBee.local.key],
+        writers: [this.privateStore.localPublicKey],
       })
     );
   }
 }
 
 export class UserIndexer {
-  static CREATE_USER_ACTION = "createUser";
-
-  constructor(privateAutoBee) {
-    this.privateAutoBee = privateAutoBee;
+  constructor(privateStore) {
+    this.privateStore = privateStore;
   }
 
   async handleOperation(batch, operation) {
-    if (operation.type === UserIndexer.CREATE_USER_ACTION) {
+    if (operation.type === User.ACTIONS.CREATE) {
       await this.indexUsers(batch, operation);
     }
   }
 
   async indexUsers(batch, operation) {
-    const { email, writers } = operation;
-    const hash = sha256(email);
-    const key = Mneme.USERS_KEY + hash;
+    const { user, writers } = operation;
 
     // Check if the user already exists
-    const result = await this.privateAutoBee.get(key);
+    const result = await this.privateStore.get(user.key);
 
     // If doesn't exist, we can assume it's the first time the user is being added
     // because it's the private core and only the device owner can write to it
@@ -96,34 +96,41 @@ export class UserIndexer {
     // their other device to the user's data.
     // Action: We append the new writer to the user's data, so 'writers' should be a Set.
     if (result) {
-      const existingUser = result.value;
+      const existingUser = result.value?.user;
+      const existingWriters = result.value?.writers;
 
       console.log("[indexUsers] User already exists", {
-        existingUser,
-        email,
-        hash,
-        key,
+        hash: user.hash,
+        key: user.key,
+        newUser: user,
+        existingUser: existingUser,
+        existingWriters,
         newWriters: writers,
       });
     }
 
     console.log("[indexUsers] Indexing user", {
-      email,
-      hash,
-      key,
+      user,
+      hash: user.hash,
+      key: user.key,
     });
-    await batch.put(key, { hash, email });
+
+    await batch.put(user.key, {
+      user: user.toProperties(),
+      writers: Array.from(new Set([...existingWriters, ...writers])),
+    });
   }
 }
 
 export class SwarmManager {
   static USER_PEER_WRITER = "org.mneme.user.peer.writer";
 
-  constructor(privateAutoBee, bootstrapSwarm) {
-    this.swarm = bootstrapSwarm
-      ? new Hyperswarm({ bootstrap: bootstrapSwarm })
+  constructor(corestore, privateStore, testingDHT) {
+    this.corestore = corestore;
+    this.privateStore = privateStore;
+    this.swarm = testingDHT
+      ? new Hyperswarm({ bootstrap: testingDHT })
       : new Hyperswarm();
-    this.privateAutoBee = privateAutoBee;
   }
 
   get dhtKeypair() {
@@ -138,7 +145,7 @@ export class SwarmManager {
     this.swarm.on("connection", this.handleSwarmConnection.bind(this));
     this.swarm.on("update", this.handleSwarmUpdate.bind(this));
 
-    this.joinSwarm(this.privateAutoBee.discoveryKey);
+    this.joinSwarm(this.privateStore.discoveryKey);
   }
 
   async handleSwarmConnection(connection, peerInfo) {
@@ -165,15 +172,9 @@ export class SwarmManager {
       });
     });
 
-    if (this.bootstrapPrivateCorePublicKey) {
-      this.peers[peerInfo.publicKey] = peerInfo;
-    } else {
-      this.currentUser = peer;
-    }
-
     !isTestRunning && rl.prompt();
 
-    this.store.replicate(connection);
+    this.corestore.replicate(connection);
   }
 
   async handleSwarmUpdate() {
@@ -195,12 +196,12 @@ export class SwarmManager {
     console.log(
       "...read-only peer sending over remote private autobee public key",
       {
-        localPublicKey: this.privateAutoBee.localPublicKey,
+        localPublicKey: this.privateStore.localPublicKey,
       }
     );
     connection.write(
       JSON.stringify({
-        [SwarmManager.USER_PEER_WRITER]: this.privateAutoBee.localPublicKey,
+        [SwarmManager.USER_PEER_WRITER]: this.privateStore.localPublicKey,
       })
     );
   }
@@ -228,7 +229,7 @@ export class SwarmManager {
           });
 
           // Add our other device as a writer to the private autobee
-          this.privateAutoBee
+          this.privateStore
             .appendWriter(writer)
             .then(() => {
               console.log(
@@ -266,27 +267,35 @@ export class PrivateStore {
   static CREATE_USER_ACTION = "createUser";
 
   constructor(privateStore, bootstrapPrivateCorePublicKey) {
+    console.log("Initializing private store...", {
+      privateBootstrap: this.bootstrapPrivateCorePublicKey,
+    });
+
     this.privateStore = privateStore;
     this.bootstrapPrivateCorePublicKey = bootstrapPrivateCorePublicKey;
-    this.privateAutoBee = this.setupPrivateBee();
-    this.indexers = [new UserIndexer(this.privateAutoBee)];
+    this.autobee = this.setupAutoBee();
+    this.indexers = [new UserIndexer(this)];
+
+    // Delegate any other calls to autobee
+    this.proxy = new DelegatingProxy(this);
+    this.proxy.setDelegate('autoBee');
   }
 
   get localPublicKey() {
-    return b4a.toString(this.privateAutoBee.local.key, "hex");
+    return b4a.toString(this.autobee.local.key, "hex");
   }
 
   get discoveryKey() {
-    return b4a.toString(this.privateAutoBee.discoveryKey, "hex");
+    return b4a.toString(this.autobee.discoveryKey, "hex");
   }
 
   async start() {
-    await this.privateAutoBee.update();
-    this.privateAutoBee.view.core.on("append", this.handleAppend.bind(this));
+    await this.autobee.update();
+    this.autobee.view.core.on("append", this.handleAppend.bind(this));
   }
 
   async destroy() {
-    await this.privateAutoBee.close();
+    await this.autobee.close();
   }
 
   async handleApplyEvents(batch, view, base) {
@@ -307,12 +316,12 @@ export class PrivateStore {
 
   async handleAppendEvents() {
     // Skip append event for hyperbee's header block
-    if (this.privateAutoBee.view.version === 1) return;
+    if (this.autobee.view.version === 1) return;
 
     !isTestRunning && rl.pause();
 
     console.log("\r[privateAutoBee#onAppend] current db key/value pairs: ");
-    for await (const node of this.privateAutoBee.createReadStream()) {
+    for await (const node of this.autobee.createReadStream()) {
       console.log("key", node.key);
       console.log("value", node.value);
       console.log();
@@ -321,39 +330,36 @@ export class PrivateStore {
     !isTestRunning && rl.prompt();
   }
 
-  setupPrivateBee() {
-    console.log("Initializing private autobee...", {
-      privateBootstrap: this.bootstrapPrivateCorePublicKey,
-    });
-
-    const privateAutoBee = new Autobee(
+  setupAutoBee() {
+    const autobee = new Autobee(
       { store: this.privateStore, coreName: "private" },
       this.bootstrapPrivateCorePublicKey,
       {
-        apply: this.handleApplyEvents,
+        apply: this.handleApplyEvents.bind(this),
       }
     ).on("error", console.error);
 
-    return privateAutoBee;
+    return autobee;
   }
 }
 
 export class MnemeRefactored {
   constructor(bootstrapPrivateCorePublicKey, storage, bootstrapSwarm) {
     // Persistence
-    this.cores = new Corestore(storage || "./data");
-    this.privateCores = this.cores.namespace("private");
+    this.corestore = new Corestore(storage || "./data");
+    this.privateCores = this.corestore.namespace("private");
     this.privateStore = new PrivateStore(
       this.privateCores,
       bootstrapPrivateCorePublicKey
     );
 
     // Application
-    this.userManager = new UserUseCase(this.privateStore.privateAutoBee);
+    this.userManager = new UserUseCase(this.privateStore);
 
     // Networking
     this.swarmManager = new SwarmManager(
-      this.privateStore.privateAutoBee,
+      this.corestore,
+      this.privateStore,
       bootstrapSwarm
     );
   }
