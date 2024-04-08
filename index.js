@@ -1,5 +1,5 @@
-import { Mneme } from "./Mneme.js";
-import { User } from "./User.js";
+import { Mneme } from "./Mneme/index.js";
+import { User } from "./User/index.js";
 
 const isTestRunning = process.env["NODE_ENV"] === "test";
 

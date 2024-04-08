@@ -1,9 +1,9 @@
 import Corestore from "corestore";
 import goodbye from "graceful-goodbye";
 
-import { PrivateStore } from "./PrivateStore.js";
-import { SwarmManager } from "./SwarmManager.js";
-import { UserUseCase } from "./UserUseCase.js";
+import { PrivateStore } from "../PrivateStore/index.js";
+import { SwarmManager } from "../SwarmManager/index.js";
+import { UserUseCase } from "../UserUseCase/index.js";
 
 export class Mneme {
   constructor(bootstrapPrivateCorePublicKey, storage, testingDHT) {

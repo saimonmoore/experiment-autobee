@@ -1,4 +1,4 @@
-import { User } from "./User.js";
+import { User } from "../User/index.js";
 
 export class UserUseCase {
   constructor(privateStore) {

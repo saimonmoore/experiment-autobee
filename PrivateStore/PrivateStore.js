@@ -1,6 +1,6 @@
 import b4a from "b4a";
-import Autobee from "./db.js";
-import { UserIndexer } from "./UserIndexer.js";
+import Autobee from "../db.js";
+import { UserIndexer } from "../UserIndexer/index.js";
 
 export class PrivateStore {
   static CREATE_USER_ACTION = "createUser";

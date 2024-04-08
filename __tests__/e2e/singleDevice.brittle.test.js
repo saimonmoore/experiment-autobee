@@ -2,8 +2,8 @@ import { test } from "brittle";
 import RAM from "random-access-memory";
 import b4a from "b4a";
 import createTestnet from "hyperdht/testnet.js";
-import { Mneme } from "../../Mneme.js";
-import { User } from "../../User.js";
+import { Mneme } from "../../Mneme/Mneme.js";
+import { User } from "../../User/User.js";
 import { waitUntil } from "../testHelpers.js";
 
 const user1Email = "personalLocal@bar.com";
