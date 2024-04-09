@@ -9,6 +9,7 @@ export class Mneme {
   constructor(bootstrapPrivateCorePublicKey, storage, testingDHT) {
     // Persistence
     this.corestore = new Corestore(storage || "./data");
+
     this.privateCores = this.corestore.namespace("private");
     this.privateStore = new PrivateStore(
       this.privateCores,

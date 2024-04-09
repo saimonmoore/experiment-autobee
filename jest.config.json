@@ -1,0 +1,13 @@
+{
+  "testMatch": [
+    "**/__tests__/**/*.test.js",
+    "!**/__tests__/**/*.brittle.test.js"
+  ],
+  "transform": {},
+  "moduleNameMapper": {
+    "corestore": "<rootDir>/__mocks__/corestore.js"
+  },
+  "setupFilesAfterEnv": [
+    "<rootDir>/jest.setup.js"
+  ]
+}

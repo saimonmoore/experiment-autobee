@@ -9,17 +9,18 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "brittle": "^3.0.0",
+    "jest": "^29.7.0",
     "nodemon": "^3.1.0"
   },
   "scripts": {
     "dev": "pear dev",
-    "test:jest": "NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest __tests__/e2e.test.js",
+    "test:jest": "NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:jest:strict": "NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest --detect-open-handles",
+    "test:jest:watch": "NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "test:brittle": "NODE_ENV=test brittle __tests__/e2e.brittle.test.js",
-    "test:jest:strict": "NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest --detect-open-handles __tests__/e2e.test.js",
-    "test:jest:watch": "nodemon --watch . --exec 'npm run test:jest:strict'",
     "test:brittle:watch": "nodemon --watch . --exec 'npm run test:brittle:all'",
     "test:brittle:all": "NODE_ENV=test brittle __tests__/all.brittle.js",
-    "test:brittle:generate": "brittle -r __tests__/all.brittle.js __tests__/**/*.brittle.test.js"
+    "test:brittle:generate": "brittle -r __tests__/all.brittle.js ./**/*.brittle.test.js"
   },
   "dependencies": {
     "autobase": "^6.0.0-rc10",
@@ -31,7 +32,6 @@
     "hyperdht": "^6.14.0",
     "hyperswarm": "^4.7.14",
     "istextorbinary": "^9.5.0",
-    "jest": "^29.7.0",
     "random-access-memory": "^6.2.1"
   }
 }

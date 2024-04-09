@@ -94,9 +94,11 @@ export class SwarmManager {
     const encoding = getEncoding(data);
     const chunkIsText = isText(null, data);
 
-    if (chunkIsText &&
+    if (
+      chunkIsText &&
       encoding === "utf8" &&
-      chunk.includes(SwarmManager.USER_PEER_WRITER)) {
+      chunk.includes(SwarmManager.USER_PEER_WRITER)
+    ) {
       try {
         const writer = JSON.parse(chunk)[SwarmManager.USER_PEER_WRITER];
         console.log(
