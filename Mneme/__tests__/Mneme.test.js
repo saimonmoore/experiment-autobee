@@ -48,7 +48,11 @@ describe("Mneme", () => {
     });
 
     it("instantiates the private store and swarm manager", async () => {
-      expect(SwarmManager).toHaveBeenCalledWith(mneme.privateStore, mneme.userManager, testingDHT);
+      expect(SwarmManager).toHaveBeenCalledWith(
+        mneme.privateStore,
+        mneme.userManager,
+        testingDHT
+      );
       expect(PrivateStore).toHaveBeenCalledWith(expect.anything(), undefined);
     });
   });
@@ -61,7 +65,11 @@ describe("Mneme", () => {
     });
 
     it("instantiates the private store and swarm manager", async () => {
-      expect(SwarmManager).toHaveBeenCalledWith(mneme.privateStore, mneme.userManager, testingDHT);
+      expect(SwarmManager).toHaveBeenCalledWith(
+        mneme.privateStore,
+        mneme.userManager,
+        testingDHT
+      );
       expect(PrivateStore).toHaveBeenCalledWith(
         expect.anything(),
         bootstrapPrivateCorePublicKey
@@ -80,7 +88,6 @@ describe("Mneme", () => {
       await mneme.start();
 
       expect(mneme.privateStore.start).toHaveBeenCalled();
-      expect(mneme.swarmManager.start).toHaveBeenCalled();
     });
   });
 
@@ -121,6 +128,21 @@ describe("Mneme", () => {
 
         expect(mneme.userManager.signup).toHaveBeenCalledWith(user);
       });
+
+      it("emits a USER_LOGIN event", async () => {
+        const eventSpy = jest.fn();
+        mneme.eventBus.on(Mneme.EVENTS.USER_LOGIN, eventSpy);
+
+        await mneme.signup(user);
+
+        expect(eventSpy).toHaveBeenCalledWith(user);
+      });
+
+      it("starts the swarm manager", async () => {
+        await mneme.signup(user);
+
+        expect(mneme.swarmManager.start).toHaveBeenCalled();
+      });
     });
   });
 
@@ -154,6 +176,21 @@ describe("Mneme", () => {
       const user = await mneme.login(potentialUser);
 
       expect(user.toProperties()).toStrictEqual(actualUser.toProperties());
+    });
+
+    it("emits a USER_LOGIN event", async () => {
+      const eventSpy = jest.fn();
+      mneme.eventBus.on(Mneme.EVENTS.USER_LOGIN, eventSpy);
+
+      await mneme.login(potentialUser);
+
+      expect(eventSpy).toHaveBeenCalledWith(potentialUser);
+    });
+
+    it("starts the swarm manager", async () => {
+      await mneme.login(potentialUser);
+
+      expect(mneme.swarmManager.start).toHaveBeenCalled();
     });
   });
 

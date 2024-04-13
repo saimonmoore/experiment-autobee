@@ -39,9 +39,14 @@ export class SwarmManager {
     const peerKey = b4a.toString(peerInfo.publicKey, "hex");
     console.log("[SwarmManager#connection] Peer joined...", { peerKey });
 
-    setTimeout(() => {
-      this.sendPeerWriter(connection);
-    }, 1000);
+    // We only want to send the peer writer message if we're logged in
+    if (this.userManager.loggedIn()) {
+      setTimeout(() => {
+        this.sendPeerWriter(connection);
+      }, 1000);
+    } else {
+      throw new Error("User is not logged in");
+    }
 
     connection.on(
       "data",
@@ -88,19 +93,25 @@ export class SwarmManager {
       "...read-only peer sending over remote private autobee public key",
       {
         localPublicKey: this.privateStore.localPublicKeyString,
+        bootstrapKey: this.privateStore.publicKeyString,
       }
     );
     connection.write(
       JSON.stringify({
         [SwarmManager.USER_PEER_WRITER]: {
           localPrivateCorePublicKey: this.privateStore.localPublicKeyString,
-          loginHash: this.privateStore.loginHash,
-        }
+          bootstrapKey: this.privateStore.publicKeyString,
+        },
       })
     );
   }
 
   async makeRemotePeerPrivateAutobaseWritable(data) {
+    if (!this.userManager.loggedIn()) {
+      console.error("User not logged in! Cannot make remote peer writable.");
+      return;
+    }
+
     const chunk = data.toString();
     const encoding = getEncoding(data);
     const chunkIsText = isText(null, data);
@@ -114,18 +125,22 @@ export class SwarmManager {
         const response = JSON.parse(chunk)[SwarmManager.USER_PEER_WRITER];
 
         const writer = response.localPrivateCorePublicKey;
-        const loginHash = response.loginHash;
+        const bootstrapKey = response.bootstrapKey;
+
+        // Now we need to check if the bootstrap key is the same as the private core's public key
+        const isSameUser = this.privateStore.publicKeyString === bootstrapKey;
 
         console.log(
           "[SwarmManager] ...read-write peer got other device's peer key",
           {
             peerKey: writer,
             length: writer.length,
-            loginHash,
+            bootstrapKey,
+            isSameUser,
           }
         );
 
-        if (writer && writer.length === 64) {
+        if (writer && writer.length === 64 && isSameUser) {
           console.log("[SwarmManager] adding writer to private autobee", {
             writer,
           });

@@ -32,6 +32,12 @@ const otherPeerKeyString = "discovery:abc123";
 
 describe("SwarmManager", () => {
   let swarmManager;
+
+  const currentUser = new User({
+    email: "test@example.com",
+    username: "testuser",
+  });
+
   const privateStore = {
     discoveryKey: b4a.from(Buffer.from(discoveryKeyString), "hex"),
     publicKeyString,
@@ -45,9 +51,11 @@ describe("SwarmManager", () => {
     login: jest.fn(),
     loggedIn: jest.fn(),
     loggedInUser: jest.fn(),
-  }
+  };
 
   beforeEach(() => {
+    // Assume we're always logged in
+    userManager.loggedIn.mockReturnValue(true);
     swarmManager = new SwarmManager(privateStore, userManager);
   });
 
@@ -86,21 +94,42 @@ describe("SwarmManager", () => {
       };
     });
 
-    it("logs the peer key and send the peer writer message after a delay", async () => {
-      await swarmManager.handleSwarmConnection(mockConnection, {
-        publicKey: b4a.from(otherPeerKeyString, "hex"),
+    describe("when the user is logged in", () => {
+      beforeEach(async () => {
+        userManager.loggedIn.mockReturnValue(true);
+        userManager.loggedInUser.mockReturnValue(currentUser);
       });
 
-      jest.advanceTimersByTime(1000);
+      it("send the peer writer message after a delay", async () => {
+        await swarmManager.handleSwarmConnection(mockConnection, {
+          publicKey: b4a.from(otherPeerKeyString, "hex"),
+        });
 
-      expect(mockConnection.write).toHaveBeenCalledWith(
-        JSON.stringify({
-          [SwarmManager.USER_PEER_WRITER]: {
-            localPrivateCorePublicKey: localPublicKeyString,
-            loginHash: privateStore.loginHash,
-          },
-        })
-      );
+        jest.advanceTimersByTime(1000);
+
+        expect(mockConnection.write).toHaveBeenCalledWith(
+          JSON.stringify({
+            [SwarmManager.USER_PEER_WRITER]: {
+              localPrivateCorePublicKey: localPublicKeyString,
+              bootstrapKey: privateStore.publicKeyString,
+            },
+          })
+        );
+      });
+    });
+
+    describe("when the user is NOT logged in", () => {
+      beforeEach(async () => {
+        userManager.loggedIn.mockReturnValue(false);
+      });
+
+      it("does NOT send the peer writer message after a delay", async () => {
+        await expect(
+          swarmManager.handleSwarmConnection(mockConnection, {
+            publicKey: b4a.from(otherPeerKeyString, "hex"),
+          })
+        ).rejects.toThrow();
+      });
     });
 
     it("attaches data, close, and error event listeners to the connection", async () => {
@@ -168,6 +197,9 @@ describe("SwarmManager", () => {
     let mockConnection;
 
     beforeEach(async () => {
+      // Assume we're logged in
+      userManager.loggedInUser.mockReturnValue(currentUser);
+
       mockConnection = {
         write: jest.fn(),
       };
@@ -180,7 +212,7 @@ describe("SwarmManager", () => {
         JSON.stringify({
           [SwarmManager.USER_PEER_WRITER]: {
             localPrivateCorePublicKey: localPublicKeyString,
-            loginHash: privateStore.loginHash,
+            bootstrapKey: privateStore.publicKeyString,
           },
         })
       );
@@ -191,6 +223,9 @@ describe("SwarmManager", () => {
     let mockConnection;
 
     beforeEach(() => {
+      // Assume we're logged in
+      userManager.loggedInUser.mockReturnValue(currentUser);
+
       mockConnection = {
         write: jest.fn(),
       };
@@ -200,7 +235,7 @@ describe("SwarmManager", () => {
       const data = JSON.stringify({
         [SwarmManager.USER_PEER_WRITER]: {
           localPrivateCorePublicKey: localPublicKeyString,
-          loginHash: privateStore.loginHash,
+          bootstrapKey: privateStore.publicKeyString,
         },
       });
       await swarmManager.makeRemotePeerPrivateAutobaseWritable(b4a.from(data));

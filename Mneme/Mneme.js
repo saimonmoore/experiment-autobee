@@ -11,6 +11,15 @@ export class Mneme {
     USER_LOGIN: "user:login",
   };
 
+  // If bootstrapPrivateCorePublicKey is not provided, this node is the first node
+  // and will be the owner of the private core.
+  // If bootstrapPrivateCorePublicKey is provided, this node is the second node
+  // and this token will be the way we "login" (or synchronize devices!!).
+  // If we supply this token, we can send it to the first node to verify the identity
+  // of the second node and allow them to become writers.
+  // So we don't need to use the currently logged in user's key to verify identity.
+  // TODO: Replace usage of loginKey with this key (we need to send it to the first node first)
+  // TODO: Do we need to login first before starting the swarm?
   constructor(bootstrapPrivateCorePublicKey, storage, testingDHT) {
     // Setup an internal event emitter
     this.eventBus = new EventEmitter({ delimiter: ":" });
@@ -37,8 +46,6 @@ export class Mneme {
 
   async start() {
     await this.privateStore.start();
-    // Wait for the main user to login/signup before starting the swarm
-    await this.swarmManager.start();
 
     goodbye(async () => {
       await this.destroy();
@@ -79,6 +86,9 @@ export class Mneme {
   setupEventBus() {
     this.eventBus.on(Mneme.EVENTS.USER_LOGIN, (user) => {
       console.log("[Mneme#setupEventBus] user logged in", user);
+
+      // Wait for the main user to login/signup before starting the swarm
+      this.swarmManager.start();
     });
   }
 
