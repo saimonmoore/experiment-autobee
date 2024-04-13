@@ -1,10 +1,11 @@
 import Hyperswarm from "hyperswarm";
-import b4a from "b4a";
+import b4a, { includes } from "b4a";
 
 import { isText, getEncoding } from "istextorbinary";
 
 export class SwarmManager {
   static USER_PEER_WRITER = "org.mneme.user.peer.writer";
+  static REMOTE_OWNER_LOGIN = "org.mneme.user.remoteOwner.login";
 
   started = false;
 
@@ -39,19 +40,16 @@ export class SwarmManager {
     const peerKey = b4a.toString(peerInfo.publicKey, "hex");
     console.log("[SwarmManager#connection] Peer joined...", { peerKey });
 
-    // We only want to send the peer writer message if we're logged in
-    if (this.userManager.loggedIn()) {
+    // We only want to send the peer writer message if we're bootstrapped!
+    if (this.privateStore.bootstrapped) {
       setTimeout(() => {
         this.sendPeerWriter(connection);
       }, 1000);
-    } else {
-      throw new Error("User is not logged in");
     }
 
-    connection.on(
-      "data",
-      this.makeRemotePeerPrivateAutobaseWritable.bind(this)
-    );
+    connection.on("data", this.handleData(connection).bind(this));
+
+    connection.on("data", this.loginRemoteOwner.bind(this));
 
     connection.on("close", () => {
       console.log("[SwarmManager#connection] Peer left...", {
@@ -68,6 +66,13 @@ export class SwarmManager {
     this.privateStore.replicate(connection);
   }
 
+  handleData(connection) {
+    return async function actuallyHandleData(data) {
+      await this.makeRemotePeerPrivateAutobaseWritable(connection)(data);
+      await this.loginRemoteOwner(data);
+    }.bind(this);
+  }
+
   async handleSwarmUpdate() {
     console.log("[SwarmManager#handleSwarmUpdate] Swarm update...", {
       connections: this.swarm.connections.length,
@@ -82,7 +87,6 @@ export class SwarmManager {
 
     console.log("[swarm] Joined swarm with topic:", {
       topic: b4a.toString(discoveryKey, "hex"),
-      privateStorePublicKey: this.privateStore.publicKeyString,
     });
 
     this.started = true;
@@ -105,13 +109,110 @@ export class SwarmManager {
       })
     );
   }
+  async sendRemoteOwnerLoginPing(connection) {
+    console.log("...read/write peer emitting remote owner login ping", {
+      userKey: this.userManager.loggedInUser().key,
+    });
+    connection.write(
+      JSON.stringify({
+        [SwarmManager.REMOTE_OWNER_LOGIN]: {
+          userKey: this.userManager.loggedInUser().key,
+        },
+      })
+    );
+  }
 
-  async makeRemotePeerPrivateAutobaseWritable(data) {
-    if (!this.userManager.loggedIn()) {
-      console.error("User not logged in! Cannot make remote peer writable.");
-      return;
-    }
+  makeRemotePeerPrivateAutobaseWritable(connection) {
+    return async function actuallyMakeRemotePeerPrivateAutobaseWritable(data) {
+      const chunk = data.toString();
+      const encoding = getEncoding(data);
+      const chunkIsText = isText(null, data);
 
+      if (
+        chunkIsText &&
+        encoding === "utf8" &&
+        chunk.includes(SwarmManager.USER_PEER_WRITER)
+      ) {
+        if (this.privateStore.bootstrapped) {
+          console.log(
+            "[SwarmManager#actuallyMakeRemotePeerPrivateAutobaseWritable] ...read only peer is bootstrapped, ignoring writer data"
+          );
+          return;
+        }
+
+        try {
+          const response = JSON.parse(chunk)[SwarmManager.USER_PEER_WRITER];
+
+          const writer = response.localPrivateCorePublicKey;
+          const bootstrapKey = response.bootstrapKey;
+          const existingWriters = this.userManager.loggedInUser()?.writers || [];
+          const writerAlreadyExists = existingWriters.includes(writer);
+
+          // Now we need to check if the bootstrap key is the same as the private core's public key
+          const isSameUser = this.privateStore.publicKeyString === bootstrapKey;
+
+          console.log(
+            "[SwarmManager] ...read-write peer got other device's peer key",
+            {
+              peerKey: writer,
+              length: writer.length,
+              bootstrapKey,
+              isSameUser,
+              writer,
+              existingWriters,
+              writerAlreadyExists
+            }
+          );
+
+          // If we have a writer of the right length, and this is the same user (i.e. we shared our private store's public key)
+          // AND the writer doesn't already exist in the user's writers array
+          if (writer && writer.length === 64 && isSameUser && !writerAlreadyExists) {
+            console.log("[SwarmManager] adding writer to private autobee", {
+              writer,
+            });
+
+            // Add our other device as a writer to the private autobee
+            this.privateStore
+              .appendWriter(writer)
+              .then(() => {
+                console.log(
+                  "[SwarmManager] added writer to private autobee...pushing new writer to user...",
+                  writer
+                );
+
+                // Persist the writer to the user
+                this.userManager.updateWriter(writer).then(() => {
+                  setTimeout(() => {
+                    console.log(
+                      "[SwarmManager] now sending login ping to remote owner..."
+                    );
+                    this.sendRemoteOwnerLoginPing(connection);
+                  }, 2000);
+                });
+              })
+              .catch((error) => {
+                // TODO: We're getting an error here as if the writable peer is trying to add itself as a writer
+                // but we can maybe ignore this error?
+                console.error(
+                  "[SwarmManager] error adding writer to private autobee",
+                  {
+                    writer,
+                    error,
+                  }
+                );
+              });
+          }
+        } catch (error) {
+          console.error("[SwarmManager] error parsing writer data:", {
+            chunk,
+            error,
+          });
+        }
+      }
+    }.bind(this);
+  }
+
+  async loginRemoteOwner(data) {
     const chunk = data.toString();
     const encoding = getEncoding(data);
     const chunkIsText = isText(null, data);
@@ -119,58 +220,72 @@ export class SwarmManager {
     if (
       chunkIsText &&
       encoding === "utf8" &&
-      chunk.includes(SwarmManager.USER_PEER_WRITER)
+      chunk.includes(SwarmManager.REMOTE_OWNER_LOGIN)
     ) {
+      console.log(
+        "[SwarmManager#actuallyMakeRemotePeerPrivateAutobaseWritable] ... DIRECT LOGIN",
+        {
+          chunk,
+          encoding,
+          chunkIsText,
+          includes: chunk.includes(SwarmManager.REMOTE_OWNER_LOGIN),
+          loggedInUser: this.userManager.loggedInUser(),
+          bootstrapped: this.privateStore.bootstrapped,
+        }
+      );
+
+      if (!this.privateStore.bootstrapped) {
+        console.log(
+          "[SwarmManager#actuallyMakeRemotePeerPrivateAutobaseWritable] ...read-write peer is not bootstrapped, ignoring direct login"
+        );
+        return;
+      }
+
       try {
-        const response = JSON.parse(chunk)[SwarmManager.USER_PEER_WRITER];
+        // Remote owner should now be able to login
+        const response = JSON.parse(chunk)[SwarmManager.REMOTE_OWNER_LOGIN];
 
-        const writer = response.localPrivateCorePublicKey;
-        const bootstrapKey = response.bootstrapKey;
-
-        // Now we need to check if the bootstrap key is the same as the private core's public key
-        const isSameUser = this.privateStore.publicKeyString === bootstrapKey;
+        const userKey = response.userKey;
 
         console.log(
-          "[SwarmManager] ...read-write peer got other device's peer key",
+          "[SwarmManager#loginRemoteOwner] ...got other device's user key",
           {
-            peerKey: writer,
-            length: writer.length,
-            bootstrapKey,
-            isSameUser,
+            userKey,
           }
         );
 
-        if (writer && writer.length === 64 && isSameUser) {
-          console.log("[SwarmManager] adding writer to private autobee", {
-            writer,
+        if (userKey) {
+          console.log("[SwarmManager#loginRemoteOwner] direct login", {
+            userKey,
           });
 
           // Add our other device as a writer to the private autobee
-          this.privateStore
-            .appendWriter(writer)
+          this.userManager
+            .directLogin(userKey)
             .then(() => {
               console.log(
-                "[SwarmManager] added writer to private autobee",
-                writer
+                "[SwarmManager#loginRemoteOwner] logged in remote owner",
+                { loggedInUser: this.userManager.loggedInUser() }
               );
             })
             .catch((error) => {
-              // TODO: We're getting an error here as if the writable peer is trying to add itself as a writer
-              // but we can maybe ignore this error?
               console.error(
-                "[SwarmManager] error adding writer to private autobee",
+                "[SwarmManager#loginRemoteOwner] error with direct login",
                 {
-                  writer,
+                  userKey,
                   error,
                 }
               );
             });
         }
       } catch (error) {
-        console.error("[SwarmManager] error parsing writer data:", {
-          chunk,
-          error,
-        });
+        console.error(
+          "[SwarmManager#loginRemoteOwner] error parsing direct login data:",
+          {
+            chunk,
+            error,
+          }
+        );
       }
     }
   }

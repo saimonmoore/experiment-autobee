@@ -4,11 +4,13 @@ export class User {
   static USERS_KEY = "org.mneme.users!";
   static ACTIONS = {
     CREATE: "createUser",
+    UPDATE: "updateUser",
   };
 
   constructor({ email, username }) {
     this.email = email;
     this.username = username;
+    this._writers = new Set();
   }
 
   static fromProperties(properties) {
@@ -21,6 +23,16 @@ export class User {
 
   get key() {
     return User.USERS_KEY + this.hash;
+  }
+
+  set writers(writers) {
+    Array(writers || [])
+      .flat()
+      .forEach((writer) => this._writers.add(writer));
+  }
+
+  get writers() {
+    return Array.from(this._writers);
   }
 
   toProperties() {

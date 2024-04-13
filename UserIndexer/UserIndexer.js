@@ -9,18 +9,23 @@ export class UserIndexer {
     if (operation.type === User.ACTIONS.CREATE) {
       await this.indexUsers(batch, operation);
     }
+
+    if (operation.type === User.ACTIONS.UPDATE) {
+      await this.indexUsers(batch, operation);
+    }
   }
 
   async indexUsers(batch, operation) {
     const { user: userData } = operation;
     const writers = operation.writers || [];
+
     const user = new User(userData);
+    user.writers = writers;
 
     // Check if the user already exists
     // get() is proxied to the underlying autobee
     console.log("[UserIndexer#indexUsers] getting user...", { user });
     const result = await this.privateStore.get(user.key);
-    let existingWriters = [];
 
     // If doesn't exist, we can assume it's the first time the user is being added
     // because it's the private core and only the device owner can write to it
@@ -32,13 +37,13 @@ export class UserIndexer {
     // Action: We append the new writer to the user's data, so 'writers' should be a Set.
     if (result) {
       const existingUser = result.value?.user;
-      existingWriters = result.value?.writers || [];
+      const existingWriters = result.value?.writers || [];
 
       console.log("[UserIndexer#indexUsers] User already exists", {
         hash: user.hash,
         key: user.key,
         newUser: user,
-        existingUser: existingUser,
+        existingUser,
         existingWriters,
         newWriters: writers,
       });
@@ -52,7 +57,7 @@ export class UserIndexer {
 
     await batch.put(user.key, {
       user: user.toProperties(),
-      writers: Array.from(new Set([...existingWriters, ...writers])),
+      writers: user.writers,
     });
   }
 }

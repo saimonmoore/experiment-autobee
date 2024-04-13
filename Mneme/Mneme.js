@@ -44,18 +44,29 @@ export class Mneme {
     );
   }
 
+  loggedIn() {
+    return this.userManager.loggedIn();
+  }
+
+  loggedInUser() {
+    return this.userManager.loggedInUser();
+  }
+
   async start() {
     await this.privateStore.start();
+    await this.swarmManager.start();
 
     goodbye(async () => {
       await this.destroy();
     });
   }
 
-  async signup(potentialUser) {
+  async signup(potentialUserData) {
     if (this.userManager.loggedIn()) {
       throw new Error("User is already logged in");
     }
+
+    const potentialUser = new User(potentialUserData);
 
     await this.userManager.signup(potentialUser);
 
@@ -85,10 +96,10 @@ export class Mneme {
 
   setupEventBus() {
     this.eventBus.on(Mneme.EVENTS.USER_LOGIN, (user) => {
-      console.log("[Mneme#setupEventBus] user logged in", user);
-
-      // Wait for the main user to login/signup before starting the swarm
-      this.swarmManager.start();
+      console.log("[Mneme#setupEventBus] user logged in", {
+        user,
+        shareWithOtherOwnDevicesOnly: this.privateStore.publicKeyString,
+      });
     });
   }
 

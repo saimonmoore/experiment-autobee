@@ -17,6 +17,10 @@ export class PrivateStore {
     this.indexers = [new UserIndexer(this)];
   }
 
+  get bootstrapped() {
+    return !!this.bootstrapPrivateCorePublicKey;
+  }
+
   get publicKey() {
     return this.autoBee.key;
   }
@@ -56,9 +60,11 @@ export class PrivateStore {
     for (const { value } of batch) {
       const operation = JSON.parse(value);
 
-      await Promise.all(this.indexers.map((indexer) => {
-        return indexer.handleOperation(batchedBeeOperations, operation);
-      }));
+      await Promise.all(
+        this.indexers.map((indexer) => {
+          return indexer.handleOperation(batchedBeeOperations, operation);
+        })
+      );
     }
 
     await batchedBeeOperations.flush();
@@ -106,8 +112,14 @@ export class PrivateStore {
   }
 
   async get(key, opts) {
-    console.log("[PrivateStore#get] getting key...", { key, opts });
-    return this.autoBee.get(key, opts);
+    const record = await this.autoBee.get(key, opts);
+    console.log("[PrivateStore#get] getting key...", {
+      key,
+      opts,
+      user: record?.user,
+      writers: record?.writers,
+    });
+    return record;
   }
 
   async peek(opts) {

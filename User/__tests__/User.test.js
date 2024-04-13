@@ -20,30 +20,52 @@ describe("User", () => {
     });
   });
 
-  it("should return correct properties when toProperties is called", () => {
-    const expectedProperties = {
-      hash: mockHash,
-      email: "test@example.com",
-      username: "testuser",
-    };
+  describe("#toProperties", () => {
+    it("returns correct properties", () => {
+      const expectedProperties = {
+        hash: mockHash,
+        email: "test@example.com",
+        username: "testuser",
+      };
 
-    expect(user.toProperties()).toEqual(expectedProperties);
+      expect(user.toProperties()).toEqual(expectedProperties);
+    });
   });
 
-  it("should return correct key", () => {
-    const expectedKey = User.USERS_KEY + mockHash;
+  describe("#key", () => {
+    it("should return correct key", () => {
+      const expectedKey = User.USERS_KEY + mockHash;
 
-    expect(user.key).toEqual(expectedKey);
+      expect(user.key).toEqual(expectedKey);
+    });
   });
 
-  it("should create user from properties correctly", () => {
-    const properties = {
-      email: "test@example.com",
-      username: "testuser",
-    };
+  describe("#fromProperties", () => {
+    it("should create user from properties correctly", () => {
+      const properties = {
+        email: "test@example.com",
+        username: "testuser",
+      };
 
-    const userFromProperties = User.fromProperties(properties);
+      const userFromProperties = User.fromProperties(properties);
 
-    expect(userFromProperties.toProperties()).toEqual(user.toProperties());
+      expect(userFromProperties.toProperties()).toEqual(user.toProperties());
+    });
+  });
+
+  describe.only("#get/set writers", () => {
+    it("adds unique writers", () => {
+      const properties = {
+        email: "test@example.com",
+        username: "testuser",
+      };
+      const writers = ["writer1", "writer2", "writer1"];
+      const expectedWriters = ["writer1", "writer2"];
+
+      const userFromProperties = User.fromProperties(properties);
+      userFromProperties.writers = writers;
+
+      expect(userFromProperties.writers).toEqual(expectedWriters);
+    });
   });
 });
