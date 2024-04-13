@@ -8,8 +8,9 @@ export class SwarmManager {
 
   started = false;
 
-  constructor(privateStore, testingDHT) {
+  constructor(privateStore, userManager, testingDHT) {
     this.privateStore = privateStore;
+    this.userManager = userManager;
     this.swarm = testingDHT
       ? new Hyperswarm({ bootstrap: testingDHT })
       : new Hyperswarm();

@@ -20,6 +20,7 @@ jest.mock("hyperswarm", () =>
 );
 
 const Hyperswarm = await import("hyperswarm").default;
+
 const { SwarmManager } = await import("../index.js");
 const { User } = await import("../../User/index.js");
 
@@ -31,7 +32,6 @@ const otherPeerKeyString = "discovery:abc123";
 
 describe("SwarmManager", () => {
   let swarmManager;
-  const corestore = {};
   const privateStore = {
     discoveryKey: b4a.from(Buffer.from(discoveryKeyString), "hex"),
     publicKeyString,
@@ -40,8 +40,15 @@ describe("SwarmManager", () => {
     replicate: jest.fn().mockResolvedValue(true),
   };
 
+  const userManager = {
+    signup: jest.fn(),
+    login: jest.fn(),
+    loggedIn: jest.fn(),
+    loggedInUser: jest.fn(),
+  }
+
   beforeEach(() => {
-    swarmManager = new SwarmManager(privateStore);
+    swarmManager = new SwarmManager(privateStore, userManager);
   });
 
   describe("when starting the SwarmManager", () => {

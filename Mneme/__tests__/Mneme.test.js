@@ -36,29 +36,32 @@ const { Mneme } = await import("../index.js");
 const { User } = await import("../../User/index.js");
 
 describe("Mneme", () => {
-  let mneme;
   const bootstrapPrivateCorePublicKey = "bootstrapPrivateKey";
   const storage = "./data";
   const testingDHT = "testingDHT";
 
   describe("when initial owner", () => {
+    let mneme;
+
     beforeEach(() => {
       mneme = new Mneme(undefined, storage, testingDHT);
     });
 
     it("instantiates the private store and swarm manager", async () => {
-      expect(SwarmManager).toHaveBeenCalledWith(mneme.privateStore, testingDHT);
+      expect(SwarmManager).toHaveBeenCalledWith(mneme.privateStore, mneme.userManager, testingDHT);
       expect(PrivateStore).toHaveBeenCalledWith(expect.anything(), undefined);
     });
   });
 
   describe("when 2nd owner", () => {
+    let mneme;
+
     beforeEach(() => {
       mneme = new Mneme(bootstrapPrivateCorePublicKey, storage, testingDHT);
     });
 
     it("instantiates the private store and swarm manager", async () => {
-      expect(SwarmManager).toHaveBeenCalledWith(mneme.privateStore, testingDHT);
+      expect(SwarmManager).toHaveBeenCalledWith(mneme.privateStore, mneme.userManager, testingDHT);
       expect(PrivateStore).toHaveBeenCalledWith(
         expect.anything(),
         bootstrapPrivateCorePublicKey
@@ -67,6 +70,8 @@ describe("Mneme", () => {
   });
 
   describe("start", () => {
+    let mneme;
+
     beforeEach(() => {
       mneme = new Mneme(bootstrapPrivateCorePublicKey, storage, testingDHT);
     });
@@ -80,6 +85,7 @@ describe("Mneme", () => {
   });
 
   describe("signup", () => {
+    let mneme;
     let signupSpy;
 
     const user = new User({
@@ -119,6 +125,7 @@ describe("Mneme", () => {
   });
 
   describe("login", () => {
+    let mneme;
     let loginSpy;
 
     const potentialUser = new User({
@@ -151,7 +158,10 @@ describe("Mneme", () => {
   });
 
   describe("destroy", () => {
+    let mneme;
+
     beforeEach(async () => {
+      mneme = new Mneme(undefined, storage, testingDHT);
       await mneme.destroy();
     });
 

@@ -28,7 +28,11 @@ export class Mneme {
     this.userManager = new UserUseCase(this.privateStore);
 
     // Networking
-    this.swarmManager = new SwarmManager(this.privateStore, testingDHT);
+    this.swarmManager = new SwarmManager(
+      this.privateStore,
+      this.userManager,
+      testingDHT
+    );
   }
 
   async start() {
