@@ -24,7 +24,8 @@ const { SwarmManager } = await import("../index.js");
 const { User } = await import("../../User/index.js");
 
 const publicKeyString = "privateCore:abc123";
-const localPublicKeyString = "privateCoreLocal:andlotsofothercharacterstomakeatototalof64chars";
+const localPublicKeyString =
+  "privateCoreLocal:andlotsofothercharacterstomakeatototalof64chars";
 const discoveryKeyString = "discovery:abc123";
 const otherPeerKeyString = "discovery:abc123";
 
@@ -36,10 +37,11 @@ describe("SwarmManager", () => {
     publicKeyString,
     localPublicKeyString,
     appendWriter: jest.fn().mockResolvedValue(true),
+    replicate: jest.fn().mockResolvedValue(true),
   };
 
   beforeEach(() => {
-    swarmManager = new SwarmManager(corestore, privateStore);
+    swarmManager = new SwarmManager(privateStore);
   });
 
   describe("when starting the SwarmManager", () => {
@@ -75,7 +77,6 @@ describe("SwarmManager", () => {
         on: jest.fn(),
         write: jest.fn(),
       };
-      swarmManager.corestore.replicate = jest.fn();
     });
 
     it("logs the peer key and send the peer writer message after a delay", async () => {
@@ -87,7 +88,10 @@ describe("SwarmManager", () => {
 
       expect(mockConnection.write).toHaveBeenCalledWith(
         JSON.stringify({
-          [SwarmManager.USER_PEER_WRITER]: localPublicKeyString,
+          [SwarmManager.USER_PEER_WRITER]: {
+            localPrivateCorePublicKey: localPublicKeyString,
+            loginHash: privateStore.loginHash,
+          },
         })
       );
     });
@@ -99,7 +103,8 @@ describe("SwarmManager", () => {
 
       expect(mockConnection.on.mock.calls[0][0]).toBe("data");
       expect(mockConnection.on.mock.calls[0][1].name).toBe(
-        swarmManager.makeRemotePeerPrivateAutobaseWritable.bind(swarmManager).name
+        swarmManager.makeRemotePeerPrivateAutobaseWritable.bind(swarmManager)
+          .name
       );
 
       expect(mockConnection.on).toHaveBeenCalledWith(
@@ -116,28 +121,28 @@ describe("SwarmManager", () => {
       await swarmManager.handleSwarmConnection(mockConnection, {
         publicKey: b4a.from(otherPeerKeyString, "hex"),
       });
-      expect(swarmManager.corestore.replicate).toHaveBeenCalledWith(
+      expect(swarmManager.privateStore.replicate).toHaveBeenCalledWith(
         mockConnection
       );
     });
   });
 
-//   describe("when a swarm update occurs", () => {
-//     beforeEach(async () => {
-//       await swarmManager.handleSwarmUpdate();
-//     });
+  //   describe("when a swarm update occurs", () => {
+  //     beforeEach(async () => {
+  //       await swarmManager.handleSwarmUpdate();
+  //     });
 
-//     it("logs the current swarm status", async () => {
-//       expect(console.log).toHaveBeenCalledWith(
-//         "[SwarmManager#handleSwarmUpdate] Swarm update...",
-//         {
-//           connections: 0,
-//           connecting: 0,
-//           peers: 0,
-//         }
-//       );
-//     });
-//   });
+  //     it("logs the current swarm status", async () => {
+  //       expect(console.log).toHaveBeenCalledWith(
+  //         "[SwarmManager#handleSwarmUpdate] Swarm update...",
+  //         {
+  //           connections: 0,
+  //           connecting: 0,
+  //           peers: 0,
+  //         }
+  //       );
+  //     });
+  //   });
 
   describe("when joining the swarm", () => {
     beforeEach(async () => {
@@ -166,7 +171,10 @@ describe("SwarmManager", () => {
     it("sends the local private autobee public key to the connection", async () => {
       expect(mockConnection.write).toHaveBeenCalledWith(
         JSON.stringify({
-          [SwarmManager.USER_PEER_WRITER]: localPublicKeyString,
+          [SwarmManager.USER_PEER_WRITER]: {
+            localPrivateCorePublicKey: localPublicKeyString,
+            loginHash: privateStore.loginHash,
+          },
         })
       );
     });
@@ -183,7 +191,10 @@ describe("SwarmManager", () => {
 
     it("adds the remote peer writer to the private autobee", async () => {
       const data = JSON.stringify({
-        [SwarmManager.USER_PEER_WRITER]: localPublicKeyString,
+        [SwarmManager.USER_PEER_WRITER]: {
+          localPrivateCorePublicKey: localPublicKeyString,
+          loginHash: privateStore.loginHash,
+        },
       });
       await swarmManager.makeRemotePeerPrivateAutobaseWritable(b4a.from(data));
       expect(swarmManager.privateStore.appendWriter).toHaveBeenCalledWith(

@@ -5,12 +5,13 @@ import { UserIndexer } from "../UserIndexer/index.js";
 export class PrivateStore {
   static CREATE_USER_ACTION = "createUser";
 
-  constructor(privateStore, bootstrapPrivateCorePublicKey) {
+  constructor(corestore, bootstrapPrivateCorePublicKey) {
     console.log("[PrivateStore] Initializing private store...", {
       privateBootstrap: this.bootstrapPrivateCorePublicKey,
     });
 
-    this.privateStore = privateStore;
+    this.corestore = corestore;
+    this.privateCore = this.corestore.namespace("private");
     this.bootstrapPrivateCorePublicKey = bootstrapPrivateCorePublicKey;
     this.autoBee = this.setupAutoBee();
     this.indexers = [new UserIndexer(this)];
@@ -81,7 +82,7 @@ export class PrivateStore {
 
   setupAutoBee() {
     const autobee = new Autobee(
-      { store: this.privateStore, coreName: "private" },
+      { store: this.privateCore, coreName: "private" },
       this.bootstrapPrivateCorePublicKey,
       {
         apply: this.handleApplyEvents.bind(this),
@@ -89,6 +90,10 @@ export class PrivateStore {
     ).on("error", console.error);
 
     return autobee;
+  }
+
+  async replicate(connection) {
+    return this.corestore.replicate(connection);
   }
 
   // Delegate any other calls to autobee

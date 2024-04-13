@@ -6,8 +6,9 @@ import { isText, getEncoding } from "istextorbinary";
 export class SwarmManager {
   static USER_PEER_WRITER = "org.mneme.user.peer.writer";
 
-  constructor(corestore, privateStore, testingDHT) {
-    this.corestore = corestore;
+  started = false;
+
+  constructor(privateStore, testingDHT) {
     this.privateStore = privateStore;
     this.swarm = testingDHT
       ? new Hyperswarm({ bootstrap: testingDHT })
@@ -23,6 +24,10 @@ export class SwarmManager {
   }
 
   async start() {
+    if (this.started) {
+      return;
+    }
+
     this.swarm.on("connection", this.handleSwarmConnection.bind(this));
     this.swarm.on("update", this.handleSwarmUpdate.bind(this));
 
@@ -54,7 +59,7 @@ export class SwarmManager {
       });
     });
 
-    this.corestore.replicate(connection);
+    this.privateStore.replicate(connection);
   }
 
   async handleSwarmUpdate() {
@@ -73,6 +78,8 @@ export class SwarmManager {
       topic: b4a.toString(discoveryKey, "hex"),
       privateStorePublicKey: this.privateStore.publicKeyString,
     });
+
+    this.started = true;
   }
 
   async sendPeerWriter(connection) {
@@ -84,7 +91,10 @@ export class SwarmManager {
     );
     connection.write(
       JSON.stringify({
-        [SwarmManager.USER_PEER_WRITER]: this.privateStore.localPublicKeyString,
+        [SwarmManager.USER_PEER_WRITER]: {
+          localPrivateCorePublicKey: this.privateStore.localPublicKeyString,
+          loginHash: this.privateStore.loginHash,
+        }
       })
     );
   }
@@ -100,12 +110,17 @@ export class SwarmManager {
       chunk.includes(SwarmManager.USER_PEER_WRITER)
     ) {
       try {
-        const writer = JSON.parse(chunk)[SwarmManager.USER_PEER_WRITER];
+        const response = JSON.parse(chunk)[SwarmManager.USER_PEER_WRITER];
+
+        const writer = response.localPrivateCorePublicKey;
+        const loginHash = response.loginHash;
+
         console.log(
           "[SwarmManager] ...read-write peer got other device's peer key",
           {
             peerKey: writer,
             length: writer.length,
+            loginHash,
           }
         );
 

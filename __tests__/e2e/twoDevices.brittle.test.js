@@ -95,7 +95,7 @@ test("when I have two devices", async (t) => {
     );
 
     // ACTION: Store user data from device B
-    await mnemeB.createUser(user2);
+    await mnemeB.signup(user2);
 
     await autobeeDeviceBIsReplicated.execution(async () => {
       let result;
@@ -192,7 +192,7 @@ test("when I have two devices", async (t) => {
   whenUserDataIsStoredOnDeviceA.plan(5);
 
   // ACTION: Store user data from device A
-  await mnemeA.createUser(user1);
+  await mnemeA.signup(user1);
 
   await whenUserDataIsStoredOnDeviceA.execution(async () => {
     let result;

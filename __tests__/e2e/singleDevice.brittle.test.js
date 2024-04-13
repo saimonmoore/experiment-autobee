@@ -46,7 +46,7 @@ test("When single own device A, ", async (t) => {
   whenUserDataIsStored.plan(6);
 
   // Action
-  await mnemeA.createUser(user1);
+  await mnemeA.signup(user1);
 
   await whenUserDataIsStored.execution(async () => {
     let result;

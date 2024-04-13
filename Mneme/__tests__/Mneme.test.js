@@ -1,8 +1,12 @@
 import { jest, expect } from "@jest/globals";
 
-jest.mock("corestore");
+jest.mock("corestore", () =>
+  jest.fn().mockImplementation(() => ({
+    namespace: jest.fn(),
+  }))
+);
 
-import Corestore from "corestore";
+const Corestore = await import("corestore").default;
 
 jest.unstable_mockModule("../../PrivateStore/PrivateStore.js", () => ({
   PrivateStore: jest.fn(() => ({
@@ -20,10 +24,11 @@ jest.unstable_mockModule("../../SwarmManager/SwarmManager.js", () => ({
 
 jest.unstable_mockModule("../../UserUseCase/UserUseCase.js", () => ({
   UserUseCase: jest.fn(() => ({
-    createUser: jest.fn(),
+    signup: jest.fn(),
+    login: jest.fn(),
+    loggedIn: jest.fn(),
   })),
 }));
-
 
 const { PrivateStore } = await import("../../PrivateStore/PrivateStore.js");
 const { SwarmManager } = await import("../../SwarmManager/SwarmManager.js");
@@ -42,11 +47,7 @@ describe("Mneme", () => {
     });
 
     it("instantiates the private store and swarm manager", async () => {
-      expect(SwarmManager).toHaveBeenCalledWith(
-        expect.anything(),
-        mneme.privateStore,
-        testingDHT
-      );
+      expect(SwarmManager).toHaveBeenCalledWith(mneme.privateStore, testingDHT);
       expect(PrivateStore).toHaveBeenCalledWith(expect.anything(), undefined);
     });
   });
@@ -57,11 +58,7 @@ describe("Mneme", () => {
     });
 
     it("instantiates the private store and swarm manager", async () => {
-      expect(SwarmManager).toHaveBeenCalledWith(
-        expect.anything(),
-        mneme.privateStore,
-        testingDHT
-      );
+      expect(SwarmManager).toHaveBeenCalledWith(mneme.privateStore, testingDHT);
       expect(PrivateStore).toHaveBeenCalledWith(
         expect.anything(),
         bootstrapPrivateCorePublicKey
@@ -82,24 +79,74 @@ describe("Mneme", () => {
     });
   });
 
-  describe("createUser", () => {
-    let createUserSpy;
+  describe("signup", () => {
+    let signupSpy;
+
+    const user = new User({
+      email: "test@example.com",
+      username: "testuser",
+    });
 
     beforeEach(() => {
       mneme = new Mneme(undefined, storage, testingDHT);
 
-      jest.spyOn(mneme.userManager, "createUser");
+      jest.spyOn(mneme.userManager, "signup");
+    });
+
+    describe("when user is already logged in", () => {
+      beforeEach(() => {
+        mneme.userManager.loggedIn.mockReturnValue(true);
+      });
+
+      it("throws an error", async () => {
+        await expect(mneme.signup(user)).rejects.toThrow(
+          "User is already logged in"
+        );
+      });
+    });
+
+    describe("when user is not already logged in", () => {
+      beforeEach(() => {
+        mneme.userManager.loggedIn.mockReturnValue(false);
+      });
+
+      it("delegates to the UserManager", async () => {
+        expect(await mneme.signup(user)).toBeTruthy();
+
+        expect(mneme.userManager.signup).toHaveBeenCalledWith(user);
+      });
+    });
+  });
+
+  describe("login", () => {
+    let loginSpy;
+
+    const potentialUser = new User({
+      email: "test@example.com",
+      username: "testuser",
+    });
+
+    const actualUser = new User({
+      email: "test@example.com",
+      username: "testuser",
+    });
+
+    beforeEach(() => {
+      mneme = new Mneme(undefined, storage, testingDHT);
+
+      jest.spyOn(mneme.userManager, "login").mockResolvedValue(actualUser);
     });
 
     it("delegates to the UserManager", async () => {
-      const user = new User({
-        email: "test@example.com",
-        username: "testuser",
-      });
+      await mneme.login(potentialUser);
 
-      await mneme.createUser(user);
+      expect(mneme.userManager.login).toHaveBeenCalledWith(potentialUser);
+    });
 
-      expect(mneme.userManager.createUser).toHaveBeenCalledWith(user);
+    it("returns the actual user", async () => {
+      const user = await mneme.login(potentialUser);
+
+      expect(user.toProperties()).toStrictEqual(actualUser.toProperties());
     });
   });
 

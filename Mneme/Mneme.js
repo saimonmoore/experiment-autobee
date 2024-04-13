@@ -10,9 +10,8 @@ export class Mneme {
     // Persistence
     this.corestore = new Corestore(storage || "./data");
 
-    this.privateCores = this.corestore.namespace("private");
     this.privateStore = new PrivateStore(
-      this.privateCores,
+      this.corestore,
       bootstrapPrivateCorePublicKey
     );
 
@@ -21,7 +20,6 @@ export class Mneme {
 
     // Networking
     this.swarmManager = new SwarmManager(
-      this.corestore,
       this.privateStore,
       testingDHT
     );
@@ -29,6 +27,7 @@ export class Mneme {
 
   async start() {
     await this.privateStore.start();
+    // Wait for the main user to login/signup before starting the swarm
     await this.swarmManager.start();
 
     goodbye(async () => {
@@ -36,8 +35,18 @@ export class Mneme {
     });
   }
 
-  async createUser(user) {
-    await this.userManager.createUser(user);
+  async signup(potentialUser) {
+    if (this.userManager.loggedIn()) {
+      throw new Error("User is already logged in");
+    }
+
+    await this.userManager.signup(potentialUser);
+
+    return potentialUser;
+  }
+
+  async login(partialUser) {
+    return this.userManager.login(partialUser);
   }
 
   async destroy() {
