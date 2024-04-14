@@ -61,13 +61,6 @@ export class UserUseCase {
   async updateWriter(writer) {
     this.loggedInUser().writers = writer;
 
-    console.log("[UserUseCase#updateWriter] updating writer", {
-      writer,
-      writers: this.loggedInUser().writers,
-      writers_: this.loggedInUser()._writers,
-      user: this.loggedInUser().toProperties(),
-    });
-
     await this.privateStore.appendOperation(
       JSON.stringify({
         type: User.ACTIONS.UPDATE,
@@ -75,13 +68,5 @@ export class UserUseCase {
         writers: this.loggedInUser().writers,
       })
     );
-
-    const record = await this.privateStore.get(this.loggedInUser().key);
-
-    console.log("[UserUseCase#updateWriter] GOT current user data", {
-      userKey: this.loggedInUser().key,
-      writers: record?.writers,
-      user: record?.user,
-    });
   }
 }

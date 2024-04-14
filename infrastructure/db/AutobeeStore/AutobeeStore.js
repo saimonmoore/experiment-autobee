@@ -6,9 +6,6 @@ export class AutobeeStore {
     this.namespace = namespace;
     this.corestore = corestore;
     this.core = this.corestore.namespace(namespace);
-    console.log("[AutobeeStore] Initializing autobee store...", {
-      namespace,
-    });
     this.bootstrapPublicKey = bootstrapPublicKey;
     this.autoBee = this.setupAutoBee();
     this.indexers = [];
@@ -74,14 +71,13 @@ export class AutobeeStore {
     // Skip append event for hyperbee's header block
     if (this.autoBee.view.version === 1) return;
 
-    console.log("[AutobeeStore] current db key/value pairs: ");
-    for await (const node of this.autoBee.createReadStream()) {
-      console.log("[AutobeeStore] entry: ", {
-        key: node.key,
-        value: node.value,
-      });
-      console.log();
-    }
+    // for await (const node of this.autoBee.createReadStream()) {
+    //   console.log("[AutobeeStore] entry: ", {
+    //     key: node.key,
+    //     value: node.value,
+    //   });
+    //   console.log();
+    // }
   }
 
   setupAutoBee() {

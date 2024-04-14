@@ -6,10 +6,6 @@ export class PrivateStore extends AutobeeStore {
   static NAMESPACE = "private";
 
   constructor(corestore, bootstrapPrivateCorePublicKey) {
-    console.log("[PrivateStore] Initializing private store...", {
-      bootstrap: bootstrapPrivateCorePublicKey,
-    });
-
     super(PrivateStore.NAMESPACE, corestore, bootstrapPrivateCorePublicKey);
 
     this.indexers = [new UserIndexer(this), new RecordIndexer(this)];

@@ -1,1 +1,1 @@
-export * from './UserUseCase.js'
+export * from './RecordUseCase.js'

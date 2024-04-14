@@ -17,12 +17,6 @@ export class Mneme {
   };
 
   constructor(bootstrapCorePublicKeys, storage, testingDHT) {
-    console.log("[Mneme] Initializing Mneme...", {
-      bootstrapCorePublicKeys,
-      storage,
-      testingDHT,
-    });
-
     const [bootstrapPrivateCorePublicKey, bootstrapPublicCorePublicKey] =
       (bootstrapCorePublicKeys &&
         bootstrapCorePublicKeys.split(Mneme.OUT_OF_BAND_SYNC_KEY_DELIMITER)) ||
@@ -118,8 +112,6 @@ export class Mneme {
   }
 
   async destroy() {
-    console.log("[Mneme#destroy] destroying p2p connections...");
-
     await this.swarmManager.destroy();
     await this.privateStore.destroy();
     (await this.publicStore) && this.publicStore.destroy();
@@ -127,14 +119,13 @@ export class Mneme {
 
   setupEventBus() {
     this.eventBus.on(Mneme.EVENTS.USER_LOGIN, (user) => {
-      console.log("[Mneme#setupEventBus] user logged in", {
-        user,
-        shareWithOtherOwnDevicesOnly: this.outOfBandSyncKey,
-      });
+      console.log("info: You are now logged in...");
+      console.log();
+      console.log("info: Use the following key to synchronise Mneme to your other devices: ", this.outOfBandSyncKey);
     });
 
     this.eventBus.on(Mneme.EVENTS.MNEME_READY, () => {
-      console.log("[Mneme#setupEventBus] MNEME_READY!");
+      console.log("info: Mneme is ready for business!");
     });
   }
 

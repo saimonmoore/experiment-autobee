@@ -35,18 +35,8 @@ test("when I have two devices", async (t) => {
   let mnemeB;
 
   const onConnection = async (connection, peerInfo) => {
-    console.log(
-      "[TEST] onConnection =====================> ",
-      connection,
-      peerInfo
-    );
     const numberOfPeersA = mnemeA.swarmManager.swarm.peers.size;
     const numberOfPeersB = mnemeB.swarmManager.swarm.peers.size;
-    console.log(
-      "[TEST] onConnection =====================> ",
-      numberOfPeersA,
-      numberOfPeersB
-    );
 
     if (numberOfPeersA < 1 || numberOfPeersB < 1) {
       return;
@@ -279,9 +269,6 @@ test("when I have two devices", async (t) => {
   // });
 
   // ACTION: Start mneme on device A
-  console.log(
-    "[TEST] whenSignupOnDeviceA =====================> STARTING MNEME A"
-  );
   await mnemeA.start();
 
   // wait a few seconds for the first device to join the swarm...
@@ -361,10 +348,6 @@ test("when I have two devices", async (t) => {
     mnemeB = new Mneme(syncKey, RAM.reusable(), testnet.bootstrap);
     mnemeB.swarmManager.swarm.on("connection", onConnection);
 
-    console.log(
-      "[TEST] whenUserLogInOnOnDeviceB =====================> STARTING MNEME B",
-      { syncKey }
-    );
     await mnemeB.start();
 
     // wait a few seconds for the connection to be established

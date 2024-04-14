@@ -46,7 +46,6 @@ export default class Autobee extends Autobase {
       const operation = JSON.parse(node.value);
 
       if (operation.type === "addWriter") {
-        console.log("addWriter", operation.key);
         await base.addWriter(b4a.from(operation.key, "hex"));
         continue;
       }

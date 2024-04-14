@@ -5,9 +5,6 @@ export class PublicStore extends AutobeeStore {
   static NAMESPACE = "public";
 
   constructor(corestore, bootstrapPublicCorePublicKey) {
-    console.log("[PublicStore] Initializing public store...", {
-      bootstrap: bootstrapPublicCorePublicKey,
-    });
     super(PublicStore.NAMESPACE, corestore, bootstrapPublicCorePublicKey);
 
     this.indexers = [new RecordIndexer(this)];
