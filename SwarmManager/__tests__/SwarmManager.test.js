@@ -44,6 +44,7 @@ describe("SwarmManager", () => {
     localPublicKeyString,
     appendWriter: jest.fn().mockResolvedValue(true),
     replicate: jest.fn().mockResolvedValue(true),
+    bootstrapped: false,
   };
 
   const userManager = {
@@ -51,12 +52,20 @@ describe("SwarmManager", () => {
     login: jest.fn(),
     loggedIn: jest.fn(),
     loggedInUser: jest.fn(),
+    updateWriter: jest.fn(),
+    directLogin: jest.fn(),
   };
 
   beforeEach(() => {
+    jest.useFakeTimers();
+
     // Assume we're always logged in
     userManager.loggedIn.mockReturnValue(true);
     swarmManager = new SwarmManager(privateStore, userManager);
+  });
+
+  afterEach(() => {
+    privateStore.bootstrapped = false;
   });
 
   describe("when starting the SwarmManager", () => {
@@ -87,20 +96,18 @@ describe("SwarmManager", () => {
     let mockConnection;
 
     beforeEach(() => {
-      jest.useFakeTimers();
       mockConnection = {
         on: jest.fn(),
         write: jest.fn(),
       };
     });
 
-    describe("when the user is logged in", () => {
+    describe("when the device is bootsrapped", () => {
       beforeEach(async () => {
-        userManager.loggedIn.mockReturnValue(true);
-        userManager.loggedInUser.mockReturnValue(currentUser);
+        privateStore.bootstrapped = true;
       });
 
-      it("send the peer writer message after a delay", async () => {
+      it("sends the peer writer message after a delay", async () => {
         await swarmManager.handleSwarmConnection(mockConnection, {
           publicKey: b4a.from(otherPeerKeyString, "hex"),
         });
@@ -118,9 +125,9 @@ describe("SwarmManager", () => {
       });
     });
 
-    describe("when the user is NOT logged in", () => {
+    describe("when the device is NOT bootstrapped", () => {
       beforeEach(async () => {
-        userManager.loggedIn.mockReturnValue(false);
+        privateStore.bootstrapped = false;
       });
 
       it("does NOT send the peer writer message after a delay", async () => {
@@ -128,7 +135,7 @@ describe("SwarmManager", () => {
           swarmManager.handleSwarmConnection(mockConnection, {
             publicKey: b4a.from(otherPeerKeyString, "hex"),
           })
-        ).rejects.toThrow();
+        ).resolves;
       });
     });
 
@@ -139,8 +146,7 @@ describe("SwarmManager", () => {
 
       expect(mockConnection.on.mock.calls[0][0]).toBe("data");
       expect(mockConnection.on.mock.calls[0][1].name).toBe(
-        swarmManager.makeRemotePeerPrivateAutobaseWritable.bind(swarmManager)
-          .name
+        "bound bound actuallyHandleData"
       );
 
       expect(mockConnection.on).toHaveBeenCalledWith(
@@ -223,25 +229,68 @@ describe("SwarmManager", () => {
     let mockConnection;
 
     beforeEach(() => {
-      // Assume we're logged in
-      userManager.loggedInUser.mockReturnValue(currentUser);
-
       mockConnection = {
         write: jest.fn(),
       };
     });
 
-    it("adds the remote peer writer to the private autobee", async () => {
+    describe("when data contains USER_PEER_WRITER", () => {
       const data = JSON.stringify({
         [SwarmManager.USER_PEER_WRITER]: {
           localPrivateCorePublicKey: localPublicKeyString,
           bootstrapKey: privateStore.publicKeyString,
         },
       });
-      await swarmManager.makeRemotePeerPrivateAutobaseWritable(b4a.from(data));
-      expect(swarmManager.privateStore.appendWriter).toHaveBeenCalledWith(
-        localPublicKeyString
-      );
+
+      beforeEach(() => {
+        // Assume we're logged in
+        userManager.loggedInUser.mockReturnValue(currentUser);
+        userManager.updateWriter.mockResolvedValue(true);
+      });
+
+      it("adds the remote peer writer to the private autobee", async () => {
+        await swarmManager.handleData(mockConnection)(b4a.from(data));
+        expect(swarmManager.privateStore.appendWriter).toHaveBeenCalledWith(
+          localPublicKeyString
+        );
+        // We should have called the updateWriter method with the localPublicKeyString
+        expect(swarmManager.userManager.updateWriter).toHaveBeenCalledWith(
+          localPublicKeyString
+        );
+
+        // Wait 2 seconds for the sendRemoteOwnerLoginPing to be called
+        jest.advanceTimersByTime(2000);
+
+        // Ensure we sent the login ping
+        expect(mockConnection.write).toHaveBeenCalledWith(
+          JSON.stringify({
+            [SwarmManager.REMOTE_OWNER_LOGIN]: {
+              userKey: currentUser.key,
+            },
+          })
+        );
+      });
+    });
+
+    describe("when BOOTSTRAPPED AND data contains REMOTE_OWNER_LOGIN", () => {
+      const data = JSON.stringify({
+        [SwarmManager.REMOTE_OWNER_LOGIN]: {
+          userKey: currentUser.key,
+        }
+      });
+
+      beforeEach(() => {
+        // Assume we're bootstrapped
+        privateStore.bootstrapped = true;
+        userManager.loggedInUser.mockReturnValue(currentUser);
+        userManager.directLogin.mockResolvedValue(true);
+      });
+
+      it("directly logs in the user by getting the user data from the private core", async () => {
+        await swarmManager.handleData(mockConnection)(b4a.from(data));
+
+        expect(userManager.directLogin).toHaveBeenCalledWith(currentUser.key);
+      });
     });
 
     // TODO: It says console.error is not being called but must be separate instance

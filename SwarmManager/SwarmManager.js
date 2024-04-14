@@ -192,6 +192,7 @@ export class SwarmManager {
 
                 // Persist the writer to the user
                 this.userManager.updateWriter(writer).then(() => {
+                  console.log('[SwarmManager] updated writer in user data...');
                   setTimeout(() => {
                     console.log(
                       "[SwarmManager] now sending login ping to remote owner..."

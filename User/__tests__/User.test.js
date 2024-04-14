@@ -53,7 +53,7 @@ describe("User", () => {
     });
   });
 
-  describe.only("#get/set writers", () => {
+  describe("#get/set writers", () => {
     it("adds unique writers", () => {
       const properties = {
         email: "test@example.com",

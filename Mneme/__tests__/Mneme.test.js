@@ -27,6 +27,7 @@ jest.unstable_mockModule("../../UserUseCase/UserUseCase.js", () => ({
     signup: jest.fn(),
     login: jest.fn(),
     loggedIn: jest.fn(),
+    loggedInUser: jest.fn(),
   })),
 }));
 
@@ -39,6 +40,10 @@ describe("Mneme", () => {
   const bootstrapPrivateCorePublicKey = "bootstrapPrivateKey";
   const storage = "./data";
   const testingDHT = "testingDHT";
+  const user = new User({
+    email: "test@example.com",
+    username: "testuser",
+  });
 
   describe("when initial owner", () => {
     let mneme;
@@ -88,17 +93,13 @@ describe("Mneme", () => {
       await mneme.start();
 
       expect(mneme.privateStore.start).toHaveBeenCalled();
+      expect(mneme.swarmManager.start).toHaveBeenCalled();
     });
   });
 
   describe("signup", () => {
     let mneme;
     let signupSpy;
-
-    const user = new User({
-      email: "test@example.com",
-      username: "testuser",
-    });
 
     beforeEach(() => {
       mneme = new Mneme(undefined, storage, testingDHT);
@@ -136,12 +137,6 @@ describe("Mneme", () => {
         await mneme.signup(user);
 
         expect(eventSpy).toHaveBeenCalledWith(user);
-      });
-
-      it("starts the swarm manager", async () => {
-        await mneme.signup(user);
-
-        expect(mneme.swarmManager.start).toHaveBeenCalled();
       });
     });
   });
@@ -186,11 +181,31 @@ describe("Mneme", () => {
 
       expect(eventSpy).toHaveBeenCalledWith(potentialUser);
     });
+  });
 
-    it("starts the swarm manager", async () => {
-      await mneme.login(potentialUser);
+  describe("loggedIn", () => {
+    let mneme;
 
-      expect(mneme.swarmManager.start).toHaveBeenCalled();
+    beforeEach(() => {
+      mneme = new Mneme(bootstrapPrivateCorePublicKey, storage, testingDHT);
+      mneme.userManager.loggedIn.mockReturnValue(true);
+    });
+
+    it("should delegate to the userManager", async () => {
+      expect(mneme.loggedIn()).toBeTruthy();
+    });
+  });
+
+  describe("loggedInUser", () => {
+    let mneme;
+
+    beforeEach(() => {
+      mneme = new Mneme(bootstrapPrivateCorePublicKey, storage, testingDHT);
+      mneme.userManager.loggedInUser.mockReturnValue(user);
+    });
+
+    it("should delegate to the userManager", async () => {
+      expect(mneme.loggedInUser()).toBe(user);
     });
   });
 

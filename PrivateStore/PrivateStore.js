@@ -3,8 +3,6 @@ import Autobee from "../db.js";
 import { UserIndexer } from "../UserIndexer/index.js";
 
 export class PrivateStore {
-  static CREATE_USER_ACTION = "createUser";
-
   constructor(corestore, bootstrapPrivateCorePublicKey) {
     console.log("[PrivateStore] Initializing private store...", {
       privateBootstrap: bootstrapPrivateCorePublicKey,
