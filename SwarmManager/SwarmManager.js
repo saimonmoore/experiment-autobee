@@ -26,7 +26,9 @@ export class SwarmManager {
   }
 
   async start() {
+    console.log("[SwarmManager] Starting swarm manager...");
     if (this.started) {
+      console.log("[SwarmManager] swarm manager already started...");
       return;
     }
 
@@ -85,7 +87,9 @@ export class SwarmManager {
     const peerDiscoverySession = this.swarm.join(discoveryKey);
     await peerDiscoverySession.flushed();
 
+    const isBootstrapped = this.privateStore.bootstrapped;
     console.log("[swarm] Joined swarm with topic:", {
+      bootstrapped: isBootstrapped,
       topic: b4a.toString(discoveryKey, "hex"),
     });
 
@@ -145,7 +149,8 @@ export class SwarmManager {
 
           const writer = response.localPrivateCorePublicKey;
           const bootstrapKey = response.bootstrapKey;
-          const existingWriters = this.userManager.loggedInUser()?.writers || [];
+          const existingWriters =
+            this.userManager.loggedInUser()?.writers || [];
           const writerAlreadyExists = existingWriters.includes(writer);
 
           // Now we need to check if the bootstrap key is the same as the private core's public key
@@ -160,13 +165,18 @@ export class SwarmManager {
               isSameUser,
               writer,
               existingWriters,
-              writerAlreadyExists
+              writerAlreadyExists,
             }
           );
 
           // If we have a writer of the right length, and this is the same user (i.e. we shared our private store's public key)
           // AND the writer doesn't already exist in the user's writers array
-          if (writer && writer.length === 64 && isSameUser && !writerAlreadyExists) {
+          if (
+            writer &&
+            writer.length === 64 &&
+            isSameUser &&
+            !writerAlreadyExists
+          ) {
             console.log("[SwarmManager] adding writer to private autobee", {
               writer,
             });

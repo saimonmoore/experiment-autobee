@@ -5,6 +5,7 @@ import EventEmitter from "eventemitter2";
 import { PrivateStore } from "../PrivateStore/index.js";
 import { SwarmManager } from "../SwarmManager/index.js";
 import { UserUseCase } from "../UserUseCase/index.js";
+import { User } from "../User/index.js";
 
 export class Mneme {
   static EVENTS = {
@@ -21,6 +22,12 @@ export class Mneme {
   // TODO: Replace usage of loginKey with this key (we need to send it to the first node first)
   // TODO: Do we need to login first before starting the swarm?
   constructor(bootstrapPrivateCorePublicKey, storage, testingDHT) {
+    console.log("[Mneme] Initializing Mneme...", {
+      bootstrapPrivateCorePublicKey,
+      storage,
+      testingDHT,
+    });
+
     // Setup an internal event emitter
     this.eventBus = new EventEmitter({ delimiter: ":" });
     this.setupEventBus();

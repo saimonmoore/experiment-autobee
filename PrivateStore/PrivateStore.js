@@ -7,7 +7,7 @@ export class PrivateStore {
 
   constructor(corestore, bootstrapPrivateCorePublicKey) {
     console.log("[PrivateStore] Initializing private store...", {
-      privateBootstrap: this.bootstrapPrivateCorePublicKey,
+      privateBootstrap: bootstrapPrivateCorePublicKey,
     });
 
     this.corestore = corestore;

@@ -20,39 +20,41 @@ const user2 = User.fromProperties({
 const user2Key = user2.key;
 
 test("When single own device A, ", async (t) => {
+  // PLAN: With private autobee
   const withPrivateAutobee = t.test("with private autobee");
   withPrivateAutobee.plan(2);
 
   let testnet;
-  let mnemeA;
+  let mneme;
 
   // Setup
   testnet = await createTestnet(1, { teardown: t.teardown });
   t.teardown(() => testnet.destroy(), { order: Infinity });
 
-  mnemeA = new Mneme(undefined, RAM.reusable(), testnet.bootstrap);
+  mneme = new Mneme(undefined, RAM.reusable(), testnet.bootstrap);
 
   // Action
-  await mnemeA.start();
+  await mneme.start();
 
   await withPrivateAutobee.execution(async () => {
-    const isWritable = await waitUntil(() => mnemeA.privateStore.autoBee.writable);
+    const isWritable = await waitUntil(() => mneme.privateStore.autoBee.writable);
     withPrivateAutobee.ok(isWritable, "should be writable");
   });
 
   await withPrivateAutobee;
 
+  // PLAN: When user data is stored on device
   const whenUserDataIsStored = t.test("when user data is stored on device");
   whenUserDataIsStored.plan(6);
 
   // Action
-  await mnemeA.signup(user1);
+  await mneme.signup(user1);
 
   await whenUserDataIsStored.execution(async () => {
     let result;
     try {
       result = await waitUntil(async () => {
-        return await mnemeA.privateStore.get(user1.key);
+        return await mneme.privateStore.get(user1.key);
       });
 
       whenUserDataIsStored.ok(result, "the user's data should be retrievable");
@@ -75,11 +77,17 @@ test("When single own device A, ", async (t) => {
     }
   });
 
-  const dbKeyA = mnemeA.privateStore.publicKeyString;
+  const dbKeyA = mneme.privateStore.publicKeyString;
   whenUserDataIsStored.ok(dbKeyA, "Database key should exist");
-
   whenUserDataIsStored.pass("User data is stored successfully on device");
   await whenUserDataIsStored;
 
-  mnemeA && mnemeA.destroy();
+  // PLAN: When user is signed up and logged in
+  const whenUserIsLoggedIn = t.test("when user data is signed up and logged in");
+  whenUserIsLoggedIn.plan(2);
+  whenUserIsLoggedIn.ok(mneme.loggedIn(), "User should be logged in");
+  whenUserIsLoggedIn.pass("User is successfully logged in on device");
+  await whenUserIsLoggedIn;
+
+  mneme && mneme.destroy();
 });
