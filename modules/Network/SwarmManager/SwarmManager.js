@@ -1,16 +1,22 @@
 import Hyperswarm from "hyperswarm";
 import b4a, { includes } from "b4a";
-
 import { isText, getEncoding } from "istextorbinary";
 
+import { Mneme } from "../../../Mneme/index.js";
+
 export class SwarmManager {
-  static USER_PEER_WRITER = "org.mneme.user.peer.writer";
+  static REMOTE_OWNER_REQUEST_MAKE_STORES_WRITABLE =
+    "org.mneme.user.remoteOwner.requestPrivateStoreWritable";
   static REMOTE_OWNER_LOGIN = "org.mneme.user.remoteOwner.login";
 
   started = false;
 
-  constructor(privateStore, userManager, testingDHT) {
-    this.privateStore = privateStore;
+  constructor(stores, userManager, eventBus, testingDHT) {
+    this.privateStore = stores.private;
+    this.publicStore = stores.public;
+    this.stores = stores;
+    this.eventBus = eventBus;
+
     this.userManager = userManager;
     this.swarm = testingDHT
       ? new Hyperswarm({ bootstrap: testingDHT })
@@ -35,23 +41,23 @@ export class SwarmManager {
     this.swarm.on("connection", this.handleSwarmConnection.bind(this));
     this.swarm.on("update", this.handleSwarmUpdate.bind(this));
 
-    this.joinSwarm(this.privateStore.discoveryKey);
+    this.joinSwarm();
   }
 
   async handleSwarmConnection(connection, peerInfo) {
+    this.connection = connection;
+
     const peerKey = b4a.toString(peerInfo.publicKey, "hex");
     console.log("[SwarmManager#connection] Peer joined...", { peerKey });
 
-    // We only want to send the peer writer message if we're bootstrapped!
+    // We only want to send the make remote owner private store writable request if we're bootstrapped!
     if (this.privateStore.bootstrapped) {
       setTimeout(() => {
-        this.sendPeerWriter(connection);
+        this.sendRemoteOwnerMakeStoresWritableRequest(connection);
       }, 1000);
     }
 
     connection.on("data", this.handleData(connection).bind(this));
-
-    connection.on("data", this.loginRemoteOwner.bind(this));
 
     connection.on("close", () => {
       console.log("[SwarmManager#connection] Peer left...", {
@@ -83,40 +89,67 @@ export class SwarmManager {
     });
   }
 
-  async joinSwarm(discoveryKey) {
-    const peerDiscoverySession = this.swarm.join(discoveryKey);
-    await peerDiscoverySession.flushed();
+  async joinSwarm() {
+    const peerDiscoverySessions = Object.keys(this.stores)
+      .map((key) => {
+        const store = this.stores[key];
 
-    const isBootstrapped = this.privateStore.bootstrapped;
-    console.log("[swarm] Joined swarm with topic:", {
-      bootstrapped: isBootstrapped,
-      topic: b4a.toString(discoveryKey, "hex"),
-    });
+        console.log("[SwarmManager] joining swarm with store...", {
+          key,
+        });
+
+        if (!store) {
+          console.log("[SwarmManager] no store to join...aborting...", { key });
+
+          return;
+        }
+
+        const discoveryKey = store.discoveryKey;
+
+        console.log("[swarm] Joining swarm with topic:", {
+          key,
+          topic: b4a.toString(discoveryKey, "hex"),
+          bootstrapped: store.bootstrapped,
+        });
+
+        return this.swarm.join(discoveryKey);
+      })
+      .filter(Boolean);
+
+    await Promise.all(
+      peerDiscoverySessions.map((session) => session.flushed())
+    );
 
     this.started = true;
   }
 
-  async sendPeerWriter(connection) {
+  async sendRemoteOwnerMakeStoresWritableRequest(connection) {
     console.log(
-      "...read-only peer sending over remote private autobee public key",
+      `[sendRemoteOwnerMakeStoresWritableRequest] ...sending over remote autobee public keys`,
       {
-        localPublicKey: this.privateStore.localPublicKeyString,
-        bootstrapKey: this.privateStore.publicKeyString,
+        privateStoreLocalPublicKey: this.privateStore.localPublicKeyString,
+        publicStoreLocalPublicKey: this.publicStore.localPublicKeyString,
+        connection,
       }
     );
     connection.write(
       JSON.stringify({
-        [SwarmManager.USER_PEER_WRITER]: {
-          localPrivateCorePublicKey: this.privateStore.localPublicKeyString,
-          bootstrapKey: this.privateStore.publicKeyString,
+        [SwarmManager.REMOTE_OWNER_REQUEST_MAKE_STORES_WRITABLE]: {
+          privateStoreLocalPublicKey: this.privateStore.localPublicKeyString,
+          publicStoreLocalPublicKey: this.publicStore.localPublicKeyString,
+          privateStorePublicKey: this.privateStore.publicKeyString,
         },
       })
     );
   }
+
   async sendRemoteOwnerLoginPing(connection) {
-    console.log("...read/write peer emitting remote owner login ping", {
-      userKey: this.userManager.loggedInUser().key,
-    });
+    console.log(
+      "[sendRemoteOwnerLoginPing] ...read/write peer emitting remote owner login ping",
+      {
+        userKey: this.userManager.loggedInUser().key,
+      }
+    );
     connection.write(
       JSON.stringify({
         [SwarmManager.REMOTE_OWNER_LOGIN]: {
@@ -135,7 +168,7 @@ export class SwarmManager {
       if (
         chunkIsText &&
         encoding === "utf8" &&
-        chunk.includes(SwarmManager.USER_PEER_WRITER)
+        chunk.includes(SwarmManager.REMOTE_OWNER_REQUEST_MAKE_STORES_WRITABLE)
       ) {
         if (this.privateStore.bootstrapped) {
           console.log(
@@ -145,13 +178,19 @@ export class SwarmManager {
         }
 
         try {
-          const response = JSON.parse(chunk)[SwarmManager.USER_PEER_WRITER];
+          const response =
+            JSON.parse(chunk)[
+              SwarmManager.REMOTE_OWNER_REQUEST_MAKE_STORES_WRITABLE
+            ];
 
-          const writer = response.localPrivateCorePublicKey;
-          const bootstrapKey = response.bootstrapKey;
+          const privateStoreWriter = response.privateStoreLocalPublicKey;
+          const publicStoreWriter = response.publicStoreLocalPublicKey;
+
+          const bootstrapKey = response.privateStorePublicKey;
           const existingWriters =
             this.userManager.loggedInUser()?.writers || [];
-          const writerAlreadyExists = existingWriters.includes(writer);
+          const writerAlreadyExists =
+            existingWriters.includes(privateStoreWriter);
 
           // Now we need to check if the bootstrap key is the same as the private core's public key
           const isSameUser = this.privateStore.publicKeyString === bootstrapKey;
@@ -159,11 +198,12 @@ export class SwarmManager {
           console.log(
             "[SwarmManager] ...read-write peer got other device's peer key",
             {
-              peerKey: writer,
-              length: writer.length,
+              peerKey: privateStoreWriter,
+              length: privateStoreWriter.length,
               bootstrapKey,
               isSameUser,
-              writer,
+              privateStoreWriter,
+              publicStoreWriter,
               existingWriters,
               writerAlreadyExists,
             }
@@ -172,34 +212,74 @@ export class SwarmManager {
           // If we have a writer of the right length, and this is the same user (i.e. we shared our private store's public key)
           // AND the writer doesn't already exist in the user's writers array
           if (
-            writer &&
-            writer.length === 64 &&
+            privateStoreWriter &&
+            privateStoreWriter.length === 64 &&
             isSameUser &&
             !writerAlreadyExists
           ) {
-            console.log("[SwarmManager] adding writer to private autobee", {
-              writer,
-            });
+            console.log(
+              "[SwarmManager] adding private writer to private autobee",
+              {
+                privateStoreWriter,
+              }
+            );
+
+            console.log(
+              "[SwarmManager] adding public writer to public autobee",
+              {
+                publicStoreWriter,
+              }
+            );
 
             // Add our other device as a writer to the private autobee
             this.privateStore
-              .appendWriter(writer)
+              .appendWriter(privateStoreWriter)
               .then(() => {
                 console.log(
                   "[SwarmManager] added writer to private autobee...pushing new writer to user...",
-                  writer
+                  privateStoreWriter
                 );
 
-                // Persist the writer to the user
-                this.userManager.updateWriter(writer).then(() => {
-                  console.log('[SwarmManager] updated writer in user data...');
-                  setTimeout(() => {
+                // Add our other device as a writer to the public autobee
+                this.publicStore
+                  .appendWriter(publicStoreWriter)
+                  .then(() => {
                     console.log(
-                      "[SwarmManager] now sending login ping to remote owner..."
+                      "[SwarmManager] added writer to public autobee...",
+                      publicStoreWriter
                     );
-                    this.sendRemoteOwnerLoginPing(connection);
-                  }, 2000);
-                });
+
+                    console.log(
+                      "[SwarmManager] Now persisting private writer to user...",
+                      publicStoreWriter
+                    );
+
+                    // Persist the writer to the user
+                    this.userManager
+                      .updateWriter(privateStoreWriter)
+                      .then(() => {
+                        console.log(
+                          "[SwarmManager] updated private writer in user data..."
+                        );
+                        setTimeout(() => {
+                          console.log(
+                            "[SwarmManager] now sending login ping to remote owner..."
+                          );
+                          this.sendRemoteOwnerLoginPing(connection);
+                        }, 2000);
+                      });
+                  })
+                  .catch((error) => {
+                    // TODO: We're getting an error here as if the writable peer is trying to add itself as a writer
+                    // but we can maybe ignore this error?
+                    console.error(
+                      "[SwarmManager] error adding writer to public autobee",
+                      {
+                        publicStoreWriter,
+                        error,
+                      }
+                    );
+                  });
               })
               .catch((error) => {
                 // TODO: We're getting an error here as if the writable peer is trying to add itself as a writer
@@ -207,7 +287,7 @@ export class SwarmManager {
                 console.error(
                   "[SwarmManager] error adding writer to private autobee",
                   {
-                    writer,
+                    writer: privateStoreWriter,
                     error,
                   }
                 );
@@ -233,21 +313,18 @@ export class SwarmManager {
       encoding === "utf8" &&
       chunk.includes(SwarmManager.REMOTE_OWNER_LOGIN)
     ) {
-      console.log(
-        "[SwarmManager#actuallyMakeRemotePeerPrivateAutobaseWritable] ... DIRECT LOGIN",
-        {
-          chunk,
-          encoding,
-          chunkIsText,
-          includes: chunk.includes(SwarmManager.REMOTE_OWNER_LOGIN),
-          loggedInUser: this.userManager.loggedInUser(),
-          bootstrapped: this.privateStore.bootstrapped,
-        }
-      );
+      console.log("[SwarmManager#loginRemoteOwner] ... DIRECT LOGIN", {
+        chunk,
+        encoding,
+        chunkIsText,
+        includes: chunk.includes(SwarmManager.REMOTE_OWNER_LOGIN),
+        loggedInUser: this.userManager.loggedInUser(),
+        bootstrapped: this.privateStore.bootstrapped,
+      });
 
       if (!this.privateStore.bootstrapped) {
         console.log(
-          "[SwarmManager#actuallyMakeRemotePeerPrivateAutobaseWritable] ...read-write peer is not bootstrapped, ignoring direct login"
+          "[SwarmManager#loginRemoteOwner] ...read-write peer is not bootstrapped, ignoring direct login"
         );
         return;
       }
@@ -278,6 +355,8 @@ export class SwarmManager {
                 "[SwarmManager#loginRemoteOwner] logged in remote owner",
                 { loggedInUser: this.userManager.loggedInUser() }
               );
+
+              this.eventBus.emit(Mneme.EVENTS.MNEME_READY);
             })
             .catch((error) => {
               console.error(

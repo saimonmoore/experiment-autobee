@@ -8,21 +8,28 @@ jest.mock("corestore", () =>
 
 const Corestore = await import("corestore").default;
 
-jest.unstable_mockModule("../../PrivateStore/PrivateStore.js", () => ({
+jest.unstable_mockModule("../../stores/PrivateStore/PrivateStore.js", () => ({
   PrivateStore: jest.fn(() => ({
     start: jest.fn(),
     destroy: jest.fn(),
   })),
 }));
 
-jest.unstable_mockModule("../../SwarmManager/SwarmManager.js", () => ({
+jest.unstable_mockModule("../../stores/PublicStore/PublicStore.js", () => ({
+  PublicStore: jest.fn(() => ({
+    start: jest.fn(),
+    destroy: jest.fn(),
+  })),
+}));
+
+jest.unstable_mockModule("../../modules/Network/SwarmManager/SwarmManager.js", () => ({
   SwarmManager: jest.fn(() => ({
     start: jest.fn(),
     destroy: jest.fn(),
   })),
 }));
 
-jest.unstable_mockModule("../../UserUseCase/UserUseCase.js", () => ({
+jest.unstable_mockModule("../../modules/User/application/UserUseCase/UserUseCase.js", () => ({
   UserUseCase: jest.fn(() => ({
     signup: jest.fn(),
     login: jest.fn(),
@@ -31,10 +38,11 @@ jest.unstable_mockModule("../../UserUseCase/UserUseCase.js", () => ({
   })),
 }));
 
-const { PrivateStore } = await import("../../PrivateStore/PrivateStore.js");
-const { SwarmManager } = await import("../../SwarmManager/SwarmManager.js");
+const { PrivateStore } = await import("../../stores/PrivateStore/PrivateStore.js");
+const { PublicStore } = await import("../../stores/PublicStore/PublicStore.js");
+const { SwarmManager } = await import("../../modules/Network/SwarmManager/SwarmManager.js");
 const { Mneme } = await import("../index.js");
-const { User } = await import("../../User/index.js");
+const { User } = await import("../../modules/User/domain/entity/User/index.js");
 
 describe("Mneme", () => {
   const bootstrapPrivateCorePublicKey = "bootstrapPrivateKey";
@@ -54,8 +62,9 @@ describe("Mneme", () => {
 
     it("instantiates the private store and swarm manager", async () => {
       expect(SwarmManager).toHaveBeenCalledWith(
-        mneme.privateStore,
+        { private: mneme.privateStore, public: mneme.publicStore },
         mneme.userManager,
+        mneme.eventBus,
         testingDHT
       );
       expect(PrivateStore).toHaveBeenCalledWith(expect.anything(), undefined);
@@ -71,8 +80,9 @@ describe("Mneme", () => {
 
     it("instantiates the private store and swarm manager", async () => {
       expect(SwarmManager).toHaveBeenCalledWith(
-        mneme.privateStore,
+        { private: mneme.privateStore, public: mneme.publicStore },
         mneme.userManager,
+        mneme.eventBus,
         testingDHT
       );
       expect(PrivateStore).toHaveBeenCalledWith(

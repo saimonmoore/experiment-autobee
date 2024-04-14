@@ -1,4 +1,4 @@
-import { sha256 } from "../helpers/sha256.js";
+import { sha256 } from "../../../../../helpers/sha256.js";
 
 export class User {
   static USERS_KEY = "org.mneme.users!";

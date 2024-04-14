@@ -1,22 +1,21 @@
 import b4a from "b4a";
-import Autobee from "../db.js";
-import { UserIndexer } from "../UserIndexer/index.js";
+import Autobee from "../Autobee/Autobee.js";
 
-export class PrivateStore {
-  constructor(corestore, bootstrapPrivateCorePublicKey) {
-    console.log("[PrivateStore] Initializing private store...", {
-      privateBootstrap: bootstrapPrivateCorePublicKey,
-    });
-
+export class AutobeeStore {
+  constructor(namespace, corestore, bootstrapPublicKey) {
+    this.namespace = namespace;
     this.corestore = corestore;
-    this.privateCore = this.corestore.namespace("private");
-    this.bootstrapPrivateCorePublicKey = bootstrapPrivateCorePublicKey;
+    this.core = this.corestore.namespace(namespace);
+    console.log("[AutobeeStore] Initializing autobee store...", {
+      namespace,
+    });
+    this.bootstrapPublicKey = bootstrapPublicKey;
     this.autoBee = this.setupAutoBee();
-    this.indexers = [new UserIndexer(this)];
+    this.indexers = [];
   }
 
   get bootstrapped() {
-    return !!this.bootstrapPrivateCorePublicKey;
+    return !!this.bootstrapPublicKey;
   }
 
   get publicKey() {
@@ -70,13 +69,14 @@ export class PrivateStore {
     await Autobee.apply(batch, view, base);
   }
 
+  // TODO: This is a temporary method to log the key/value pairs in the db
   async handleAppendEvents() {
     // Skip append event for hyperbee's header block
     if (this.autoBee.view.version === 1) return;
 
-    console.log("[PrivateStore] current db key/value pairs: ");
+    console.log("[AutobeeStore] current db key/value pairs: ");
     for await (const node of this.autoBee.createReadStream()) {
-      console.log("[PrivateStore] entry: ", {
+      console.log("[AutobeeStore] entry: ", {
         key: node.key,
         value: node.value,
       });
@@ -86,8 +86,8 @@ export class PrivateStore {
 
   setupAutoBee() {
     const autobee = new Autobee(
-      { store: this.privateCore, coreName: "private" },
-      this.bootstrapPrivateCorePublicKey,
+      { store: this.core, coreName: this.namespace },
+      this.bootstrapPublicKey,
       {
         apply: this.handleApplyEvents.bind(this),
       }
@@ -110,14 +110,7 @@ export class PrivateStore {
   }
 
   async get(key, opts) {
-    const record = await this.autoBee.get(key, opts);
-    console.log("[PrivateStore#get] getting key...", {
-      key,
-      opts,
-      user: record?.user,
-      writers: record?.writers,
-    });
-    return record;
+    return this.autoBee.get(key, opts);
   }
 
   async peek(opts) {
