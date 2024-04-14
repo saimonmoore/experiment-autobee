@@ -1,4 +1,4 @@
-import { User } from "../User/index.js";
+import { User } from "../../domain/entity/User/index.js";
 
 export class UserUseCase {
   currentUser;

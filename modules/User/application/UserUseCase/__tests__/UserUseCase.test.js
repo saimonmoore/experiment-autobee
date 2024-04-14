@@ -1,7 +1,7 @@
 import { jest, expect } from "@jest/globals";
 
 import { UserUseCase } from "../index.js";
-import { User } from "../../User/index.js";
+import { User } from "../../../domain/entity/User/index.js";
 
 describe("UserUseCase", () => {
   let userUseCase;

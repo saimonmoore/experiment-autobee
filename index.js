@@ -1,5 +1,6 @@
 import { Mneme } from "./Mneme/index.js";
-import { User } from "./User/index.js";
+import { User } from "./modules/User/domain/entity/User/index.js";
+import { Record } from "./modules/Record/domain/entity/Record/index.js";
 
 const isTestRunning = process.env["NODE_ENV"] === "test";
 
@@ -21,7 +22,7 @@ if (!isTestRunning) {
   await mneme.start();
 }
 
-export { Mneme, User };
+export { Mneme, User, Record };
 
 // For hrepl
 export { mneme };

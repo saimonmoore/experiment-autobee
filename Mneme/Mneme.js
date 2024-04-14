@@ -2,34 +2,34 @@ import Corestore from "corestore";
 import goodbye from "graceful-goodbye";
 import EventEmitter from "eventemitter2";
 
-import { PrivateStore } from "../PrivateStore/index.js";
-import { SwarmManager } from "../SwarmManager/index.js";
-import { UserUseCase } from "../UserUseCase/index.js";
-import { User } from "../User/index.js";
+import { PrivateStore } from "../stores/PrivateStore/index.js";
+import { PublicStore } from "../stores/PublicStore/PublicStore.js";
+import { SwarmManager } from "../modules/Network/SwarmManager/index.js";
+import { User } from "../modules/User/domain/entity/User/index.js";
+import { UserUseCase } from "../modules/User/application/UserUseCase/index.js";
+import { RecordUseCase } from "../modules/Record/application/RecordUseCase/index.js";
 
 export class Mneme {
+  static OUT_OF_BAND_SYNC_KEY_DELIMITER = ":";
   static EVENTS = {
     USER_LOGIN: "user:login",
+    MNEME_READY: "mneme:ready",
   };
 
-  // If bootstrapPrivateCorePublicKey is not provided, this node is the first node
-  // and will be the owner of the private core.
-  // If bootstrapPrivateCorePublicKey is provided, this node is the second node
-  // and this token will be the way we "login" (or synchronize devices!!).
-  // If we supply this token, we can send it to the first node to verify the identity
-  // of the second node and allow them to become writers.
-  // So we don't need to use the currently logged in user's key to verify identity.
-  // TODO: Replace usage of loginKey with this key (we need to send it to the first node first)
-  // TODO: Do we need to login first before starting the swarm?
-  constructor(bootstrapPrivateCorePublicKey, storage, testingDHT) {
+  constructor(bootstrapCorePublicKeys, storage, testingDHT) {
     console.log("[Mneme] Initializing Mneme...", {
-      bootstrapPrivateCorePublicKey,
+      bootstrapCorePublicKeys,
       storage,
       testingDHT,
     });
 
+    const [bootstrapPrivateCorePublicKey, bootstrapPublicCorePublicKey] =
+      (bootstrapCorePublicKeys &&
+        bootstrapCorePublicKeys.split(Mneme.OUT_OF_BAND_SYNC_KEY_DELIMITER)) ||
+      [];
+
     // Setup an internal event emitter
-    this.eventBus = new EventEmitter({ delimiter: ":" });
+    this.eventBus = new EventEmitter();
     this.setupEventBus();
 
     // Persistence
@@ -40,15 +40,28 @@ export class Mneme {
       bootstrapPrivateCorePublicKey
     );
 
+    this.publicStore = new PublicStore(
+      this.corestore,
+      bootstrapPublicCorePublicKey
+    );
+
     // Application
     this.userManager = new UserUseCase(this.privateStore);
+    this.privateRecordManager = new RecordUseCase(this.privateStore);
+    this.publicRecordManager = new RecordUseCase(this.publicStore);
 
     // Networking
     this.swarmManager = new SwarmManager(
-      this.privateStore,
+      { private: this.privateStore, public: this.publicStore },
       this.userManager,
+      this.eventBus,
       testingDHT
     );
+  }
+
+  // Is formed from both the public and private store public keys
+  get outOfBandSyncKey() {
+    return `${this.privateStore.publicKeyString}${Mneme.OUT_OF_BAND_SYNC_KEY_DELIMITER}${this.publicStore.publicKeyString}`;
   }
 
   loggedIn() {
@@ -61,6 +74,8 @@ export class Mneme {
 
   async start() {
     await this.privateStore.start();
+    (await this.publicStore) && this.publicStore.start();
+
     await this.swarmManager.start();
 
     goodbye(async () => {
@@ -94,19 +109,32 @@ export class Mneme {
     return user;
   }
 
+  async addPrivateRecord(record) {
+    await this.privateRecordManager.addRecord(record);
+  }
+
+  async addPublicRecord(record) {
+    await this.publicRecordManager.addRecord(record);
+  }
+
   async destroy() {
     console.log("[Mneme#destroy] destroying p2p connections...");
 
     await this.swarmManager.destroy();
     await this.privateStore.destroy();
+    (await this.publicStore) && this.publicStore.destroy();
   }
 
   setupEventBus() {
     this.eventBus.on(Mneme.EVENTS.USER_LOGIN, (user) => {
       console.log("[Mneme#setupEventBus] user logged in", {
         user,
-        shareWithOtherOwnDevicesOnly: this.privateStore.publicKeyString,
+        shareWithOtherOwnDevicesOnly: this.outOfBandSyncKey,
       });
+    });
+
+    this.eventBus.on(Mneme.EVENTS.MNEME_READY, () => {
+      console.log("[Mneme#setupEventBus] MNEME_READY!");
     });
   }
 

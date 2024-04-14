@@ -1,11 +1,11 @@
 import { jest, expect } from "@jest/globals";
 
-jest.unstable_mockModule("../../helpers/sha256.js", () => ({
+jest.unstable_mockModule("../../../../../../helpers/sha256.js", () => ({
   sha256: jest.fn(),
 }));
 
-const { sha256 } = await import("../../helpers/sha256.js");
-const { User } = await import("../../User/index.js");
+const { sha256 } = await import("../../../../../../helpers/sha256.js");
+const { User } = await import("../index.js");
 
 describe("User", () => {
   let user;
